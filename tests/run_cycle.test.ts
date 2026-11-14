@@ -19,10 +19,15 @@ describe('Run Cycle & Room State Unit Tests', () => {
       expect(cr.enemySpawns.length).toBeGreaterThan(0);
     });
 
-    // Boss room is uncleared by default with boss spawn
+    // Exit Vault / Boss room is uncleared by default with guardian spawns on 1-1 and Boss on 1-2
     const bossRoom = rooms.find(r => r.type === 'boss')!;
     expect(bossRoom.isCleared).toBe(false);
-    expect(bossRoom.enemySpawns.some(e => e.type === 'boss_ignis')).toBe(true);
+    expect(bossRoom.enemySpawns.length).toBeGreaterThan(0);
+
+    const floor2Rooms = DungeonGenerator.generateFloor(1234, 2);
+    const floor2Boss = floor2Rooms.find(r => r.type === 'boss')!;
+    expect(floor2Boss.isCleared).toBe(false);
+    expect(floor2Boss.enemySpawns.some(e => e.type === 'boss_ignis')).toBe(true);
   });
 
   it('guarantees rewards spawn flag prevents duplicate reward generation', () => {

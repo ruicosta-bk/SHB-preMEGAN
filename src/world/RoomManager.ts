@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { RoomState, DoorData, CorridorData } from '../types/room';
+import { RoomState, DoorData, CorridorData, EnemySpawnDef } from '../types/room';
+import { FloorMeta, getFloorMeta } from '../data/biomes';
 import { EnemyBase } from '../enemies/EnemyBase';
 import { EnemyGrunt } from '../enemies/EnemyGrunt';
 import { EnemyShooter } from '../enemies/EnemyShooter';
@@ -21,11 +22,18 @@ export interface RectCollider {
 }
 
 export interface PickupItem {
-  type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item' | 'statue' | 'portal';
+  type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item' | 'statue' | 'portal' | 'vending' | 'forge';
   sprite: Phaser.GameObjects.Sprite;
   data?: any;
   price?: number;
   label?: string;
+}
+
+interface HazardTile {
+  x: number;
+  y: number;
+  kind: 'ice' | 'lava';
+  sprite: Phaser.GameObjects.Sprite;
 }
 
 interface DoorVisualGroup {
@@ -59,27 +67,35 @@ export class RoomManager {
   private torchTimer: number = 0;
   private torchFrame: boolean = false;
 
-  // Floor spike traps
+  // Floor spike traps & biome hazards
   private spikeTraps: SpikeTrap[] = [];
+  private hazardTiles: HazardTile[] = [];
   private trapCycleTimer: number = 0;
   public areTrapsActive: boolean = false;
+  public floorMeta: FloorMeta;
 
   // Colliders
   public staticWallColliders: RectCollider[] = [];
   public wallColliders: RectCollider[] = [];
   public doorColliders: RectCollider[] = [];
 
-  // Active enemies in current combat encounter
+  // Active enemies & wave reinforcement state
   public activeEnemies: EnemyBase[] = [];
+  private waveQueue: EnemySpawnDef[][] = [];
+  private pendingWaveSpawns: EnemySpawnDef[] | null = null;
+  private pendingWaveRoom: RoomState | null = null;
+  private pendingWaveTimer: number = 0;
+  private waveMarkers: Phaser.GameObjects.Sprite[] = [];
 
   // Pickups & interactive world objects across the floor
   public pickups: PickupItem[] = [];
   private merchantSprites: Phaser.GameObjects.Sprite[] = [];
 
-  constructor(scene: Phaser.Scene, rooms: RoomState[], corridors: CorridorData[] = []) {
+  constructor(scene: Phaser.Scene, rooms: RoomState[], corridors: CorridorData[] = [], floorNumber: number = 1) {
     this.scene = scene;
     this.rooms = rooms;
     this.corridors = corridors;
+    this.floorMeta = getFloorMeta(floorNumber);
     this.interactiveProps = new InteractiveProps(scene);
   }
 
@@ -118,10 +134,11 @@ export class RoomManager {
       const midCol = Math.floor(cols / 2);
       const midRow = Math.floor(rows / 2);
 
-      // Draw varied floor tiles
+      // Draw varied biome floor tiles
+      const isDefaultBiome = this.floorMeta.biomeId === 'stone_crypt';
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          let tileKey = 'floor_tile';
+          let tileKey = this.floorMeta.floorTex;
           const hash = ((c * 73856093) ^ (r * 19349663) ^ (room.index * 83492791)) >>> 0;
 
           if (room.layout.floorPattern === 'mosaic' && Math.abs(c - midCol) <= 1 && Math.abs(r - midRow) <= 1) {
@@ -129,10 +146,10 @@ export class RoomManager {
           } else if (room.layout.floorPattern === 'carpet' && Math.abs(r - midRow) <= 1 && c >= 2 && c <= cols - 3) {
             tileKey = 'floor_carpet';
           } else if (hash % 17 === 0) {
-            tileKey = 'floor_tile_2';
-          } else if (hash % 23 === 0) {
+            tileKey = this.floorMeta.floorAltTex;
+          } else if (isDefaultBiome && hash % 23 === 0) {
             tileKey = 'floor_tile_3';
-          } else if (room.layout.floorPattern === 'rune' && hash % 11 === 0) {
+          } else if (isDefaultBiome && room.layout.floorPattern === 'rune' && hash % 11 === 0) {
             tileKey = 'floor_tile_4';
           }
 
@@ -153,34 +170,46 @@ export class RoomManager {
 
       for (let c = 0; c < cols; c++) {
         if (!isNorthDoorCol(c)) {
-          rt.drawFrame('wall_tile', undefined, c * ts, 0);
+          rt.drawFrame(this.floorMeta.wallTex, undefined, c * ts, 0);
           this.staticWallColliders.push({ x: room.worldX + c * ts, y: room.worldY, width: ts, height: ts });
         }
         if (!isSouthDoorCol(c)) {
-          rt.drawFrame('wall_tile', undefined, c * ts, (rows - 1) * ts);
+          rt.drawFrame(this.floorMeta.wallTex, undefined, c * ts, (rows - 1) * ts);
           this.staticWallColliders.push({ x: room.worldX + c * ts, y: room.worldY + (rows - 1) * ts, width: ts, height: ts });
         }
       }
       for (let r = 1; r < rows - 1; r++) {
         if (!isWestDoorRow(r)) {
-          rt.drawFrame('wall_tile', undefined, 0, r * ts);
+          rt.drawFrame(this.floorMeta.wallTex, undefined, 0, r * ts);
           this.staticWallColliders.push({ x: room.worldX, y: room.worldY + r * ts, width: ts, height: ts });
         }
         if (!isEastDoorRow(r)) {
-          rt.drawFrame('wall_tile', undefined, (cols - 1) * ts, r * ts);
+          rt.drawFrame(this.floorMeta.wallTex, undefined, (cols - 1) * ts, r * ts);
           this.staticWallColliders.push({ x: room.worldX + (cols - 1) * ts, y: room.worldY + r * ts, width: ts, height: ts });
         }
       }
 
-      // Draw internal stone pillars
+      // Draw internal biome stone/crystal/obsidian pillars
       for (const w of room.layout.walls) {
-        rt.drawFrame('pillar_tile', undefined, w.x * ts, w.y * ts);
+        rt.drawFrame(this.floorMeta.pillarTex, undefined, w.x * ts, w.y * ts);
         this.staticWallColliders.push({
           x: room.worldX + w.x * ts,
           y: room.worldY + w.y * ts,
           width: ts,
           height: ts
         });
+      }
+
+      // Add biome floor hazards (icy patches / molten lava pools)
+      for (const hz of room.layout.hazards || []) {
+        const hx = room.worldX + hz.x * ts + ts / 2;
+        const hy = room.worldY + hz.y * ts + ts / 2;
+        const hzSpr = this.scene.add
+          .sprite(hx, hy, hz.kind === 'ice' ? 'ice_patch' : 'lava_pool')
+          .setDepth(2)
+          .setAlpha(hz.kind === 'ice' ? 0.85 : 0.92);
+        this.worldObjects.push(hzSpr);
+        this.hazardTiles.push({ x: hx, y: hy, kind: hz.kind, sprite: hzSpr });
       }
 
       // Add glowing wall torches
@@ -265,13 +294,13 @@ export class RoomManager {
       this.worldObjects.push(rt);
 
       for (const ft of corr.floorTiles) {
-        rt.drawFrame('floor_tile', undefined, ft.x - corr.x, ft.y - corr.y);
+        rt.drawFrame(this.floorMeta.floorTex, undefined, ft.x - corr.x, ft.y - corr.y);
       }
       for (const wr of corr.wallRects) {
         this.staticWallColliders.push(wr);
         for (let x = wr.x; x < wr.x + wr.width; x += ts) {
           for (let y = wr.y; y < wr.y + wr.height; y += ts) {
-            rt.drawFrame('wall_tile', undefined, x - corr.x, y - corr.y);
+            rt.drawFrame(this.floorMeta.wallTex, undefined, x - corr.x, y - corr.y);
           }
         }
       }
@@ -350,22 +379,32 @@ export class RoomManager {
 
   private spawnRoomEnemies(room: RoomState): void {
     this.activeEnemies = [];
+    this.waveQueue = room.waves ? room.waves.map(w => [...w]) : [];
+    this.clearWaveMarkers();
 
-    for (const sp of room.enemySpawns) {
+    this.spawnEnemyList(room, room.enemySpawns);
+
+    if (this.activeEnemies.length > 0) {
+      this.lockRoomDoors(room.index);
+    }
+  }
+
+  private spawnEnemyList(room: RoomState, spawns: EnemySpawnDef[]): void {
+    for (const sp of spawns) {
       const worldPosX = room.worldX + sp.x * room.width;
       const worldPosY = room.worldY + sp.y * room.height;
 
       let enemy: EnemyBase | null = null;
       if (sp.type === 'grunt') {
         enemy = new EnemyGrunt(this.scene, worldPosX, worldPosY);
-      } else if (sp.type === 'shooter' || sp.type === 'frost_mage') {
-        enemy = new EnemyShooter(this.scene, worldPosX, worldPosY, sp.type === 'frost_mage' ? 'frost_mage' : 'shooter');
+      } else if (sp.type === 'shooter' || sp.type === 'frost_mage' || sp.type === 'frost_knight') {
+        enemy = new EnemyShooter(this.scene, worldPosX, worldPosY, sp.type);
       } else if (sp.type === 'fan_caster') {
         enemy = new EnemyFanCaster(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'charger') {
         enemy = new EnemyCharger(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'boss_ignis') {
-        enemy = new BossIgnis(this.scene, worldPosX, worldPosY);
+        enemy = new BossIgnis(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
       }
 
       if (enemy) {
@@ -375,10 +414,37 @@ export class RoomManager {
         this.activeEnemies.push(enemy);
       }
     }
+  }
 
-    if (this.activeEnemies.length > 0) {
-      this.lockRoomDoors(room.index);
+  private beginWaveTelegraph(room: RoomState, waveSpawns: EnemySpawnDef[]): void {
+    this.clearWaveMarkers();
+    this.pendingWaveSpawns = waveSpawns;
+    this.pendingWaveRoom = room;
+    this.pendingWaveTimer = 0.75;
+
+    for (const sp of waveSpawns) {
+      const wx = room.worldX + sp.x * room.width;
+      const wy = room.worldY + sp.y * room.height;
+      const marker = this.scene.add.sprite(wx, wy, 'spawn_marker_x').setDepth(4).setAlpha(0.9);
+      this.scene.tweens.add({
+        targets: marker,
+        scaleX: 1.35,
+        scaleY: 1.35,
+        alpha: 0.45,
+        duration: 240,
+        yoyo: true,
+        repeat: -1
+      });
+      this.waveMarkers.push(marker);
     }
+  }
+
+  private clearWaveMarkers(): void {
+    for (const m of this.waveMarkers) m.destroy();
+    this.waveMarkers = [];
+    this.pendingWaveSpawns = null;
+    this.pendingWaveRoom = null;
+    this.pendingWaveTimer = 0;
   }
 
   public update(
@@ -447,13 +513,30 @@ export class RoomManager {
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
     }
 
-    // 5. Check room clear condition
+    // 4b. Handle telegraphed multi-wave reinforcements
+    if (this.pendingWaveSpawns && this.pendingWaveRoom) {
+      this.pendingWaveTimer -= deltaSec;
+      if (this.pendingWaveTimer <= 0) {
+        const nextSpawns = this.pendingWaveSpawns;
+        const targetRoom = this.pendingWaveRoom;
+        this.clearWaveMarkers();
+        this.spawnEnemyList(targetRoom, nextSpawns);
+      }
+      return;
+    }
+
+    // 5. Check room clear / next wave trigger
     if (!curRoom.isCleared && this.activeEnemies.length === 0 && this.spawnedEnemyRooms.has(curRoom.index)) {
-      curRoom.isCleared = true;
-      audio.playRoomClear();
-      this.unlockRoomDoors(curRoom.index);
-      this.spawnRoomRewards(curRoom);
-      events.emit('room:cleared', { room: curRoom });
+      if (this.waveQueue.length > 0) {
+        const nextWave = this.waveQueue.shift()!;
+        this.beginWaveTelegraph(curRoom, nextWave);
+      } else {
+        curRoom.isCleared = true;
+        audio.playRoomClear();
+        this.unlockRoomDoors(curRoom.index);
+        this.spawnRoomRewards(curRoom);
+        events.emit('room:cleared', { room: curRoom });
+      }
     }
   }
 
@@ -465,6 +548,15 @@ export class RoomManager {
       }
     }
     return false;
+  }
+
+  public getHazardAt(px: number, py: number): 'ice' | 'lava' | null {
+    for (const hz of this.hazardTiles) {
+      if (Math.abs(px - hz.x) < 15 && Math.abs(py - hz.y) < 15) {
+        return hz.kind;
+      }
+    }
+    return null;
   }
 
   private rollEnemyDrop(x: number, y: number, isElite: boolean = false): void {
@@ -522,6 +614,8 @@ export class RoomManager {
     );
 
     this.spawnPickup('altar', centerX, centerY + 65);
+    this.spawnPickup('forge', centerX - 105, centerY + 65, { cost: 18 }, 18, 'Lò Rèn Cường Hóa (+25% ST Vũ Khí) [18 Vàng]');
+    this.spawnPickup('vending', centerX + 105, centerY + 65, { cost: 12 }, 12, 'Máy Bán Nước Buff Vĩnh Viễn [12 Vàng]');
   }
 
   public spawnRoomRewards(room: RoomState): void {
@@ -534,6 +628,7 @@ export class RoomManager {
     if (room.type === 'treasure') {
       this.spawnPickup('chest', centerX - 35, centerY);
       this.spawnPickup('statue', centerX + 45, centerY, { cost: 12 }, 12, 'Tượng Thần Cổ Xưa [12 Vàng]');
+      this.spawnPickup('vending', centerX, centerY - 56, { cost: 12 }, 12, 'Máy Bán Nước Buff Vĩnh Viễn [12 Vàng]');
       this.spawnPickup('coin', centerX - 35, centerY + 35, 3);
       this.spawnPickup('heart', centerX - 80, centerY, 3);
       this.spawnPickup('energy', centerX + 90, centerY, 60);
@@ -564,6 +659,8 @@ export class RoomManager {
     else if (type === 'chest') texture = 'chest_closed';
     else if (type === 'altar') texture = 'upgrade_altar';
     else if (type === 'statue') texture = 'statue_alchemist';
+    else if (type === 'vending') texture = 'vending_machine';
+    else if (type === 'forge') texture = 'forge_anvil';
     else if (type === 'portal') texture = 'portal_1';
     else if (type === 'weapon') texture = (data as WeaponData)?.iconTexture || 'icon_shotgun';
     else if (type === 'shop_item') {
@@ -584,7 +681,7 @@ export class RoomManager {
         repeat: -1,
         ease: 'Sine.easeInOut'
       });
-    } else if (type !== 'chest' && type !== 'altar' && type !== 'statue') {
+    } else if (type !== 'chest' && type !== 'altar' && type !== 'statue' && type !== 'vending' && type !== 'forge') {
       this.scene.tweens.add({
         targets: spr,
         y: y - 5,
@@ -627,6 +724,9 @@ export class RoomManager {
     this.spawnedEnemyRooms.clear();
     this.torchSprites = [];
     this.spikeTraps = [];
+    this.hazardTiles = [];
+    this.waveQueue = [];
+    this.clearWaveMarkers();
     this.staticWallColliders = [];
     this.wallColliders = [];
     this.doorColliders = [];

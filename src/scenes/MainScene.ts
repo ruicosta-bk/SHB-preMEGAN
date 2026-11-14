@@ -5,6 +5,7 @@ import { RoomManager, PickupItem } from '../world/RoomManager';
 import { PlayerController } from '../player/PlayerController';
 import { PetController } from '../player/PetController';
 import { HeroId } from '../data/heroes';
+import { getFloorMeta, TOTAL_FLOORS } from '../data/biomes';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { StatusManager } from '../combat/StatusManager';
 import { FloatingNumbers } from '../ui/FloatingNumbers';
@@ -27,10 +28,13 @@ export class MainScene extends Phaser.Scene {
   private isGameRunning: boolean = false;
   private isPaused: boolean = false;
   private seed: number = 1000;
+  private currentFloor: number = 1;
+  private isTransitioningFloor: boolean = false;
 
   // Run statistics
   private runTime: number = 0;
   private enemiesDefeated: number = 0;
+  private totalRoomsCleared: number = 0;
   private damageDealt: number = 0;
 
   // Nearest interactive pickup
@@ -97,6 +101,10 @@ export class MainScene extends Phaser.Scene {
       this.floatingNumbers.showDamage(data.x, data.y, data.damage, data.isCrit);
     });
 
+    events.on('room:cleared', () => {
+      this.totalRoomsCleared++;
+    });
+
     events.on('combat:enemy-died', (data: any) => {
       this.enemiesDefeated++;
       if (this.player) {
@@ -111,7 +119,9 @@ export class MainScene extends Phaser.Scene {
             const ry = data.y + (Math.random() - 0.5) * 90;
             this.roomManager.spawnPickup('coin', rx, ry, 1);
           }
-          this.floatingNumbers.showNotice(data.x, data.y - 30, 'CỔNG DỊCH CHUYỂN ĐÃ MỞ!', '#38bdf8');
+          const msg =
+            this.currentFloor < TOTAL_FLOORS ? 'CỔNG QUA TẦNG TIẾP ĐÃ MỞ!' : 'CỔNG CHIẾN THẮNG ĐÃ MỞ!';
+          this.floatingNumbers.showNotice(data.x, data.y - 30, msg, '#38bdf8');
         }
       }
     });
@@ -272,8 +282,11 @@ export class MainScene extends Phaser.Scene {
     }
     this.isGameRunning = true;
     this.isPaused = false;
+    this.isTransitioningFloor = false;
+    this.currentFloor = 1;
     this.runTime = 0;
     this.enemiesDefeated = 0;
+    this.totalRoomsCleared = 0;
     this.damageDealt = 0;
     this.seed = Math.floor(Math.random() * 99999) + 1;
 
@@ -294,11 +307,11 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Generate fresh seamless dungeon floor + corridors
-    const floorRooms = DungeonGenerator.generateFloor(this.seed);
+    const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor);
     const corridors = DungeonGenerator.generateCorridors(floorRooms);
-    this.roomManager = new RoomManager(this, floorRooms, corridors);
+    this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor);
 
-    // Spawn player & Clockwork Golem pet in center of start room (Room 0)
+    // Spawn player & pet in center of start room (Room 0)
     const startRoom = floorRooms[0];
     const playerSpawnX = startRoom.worldX + startRoom.width / 2;
     const playerSpawnY = startRoom.worldY + startRoom.height / 2;
@@ -309,6 +322,8 @@ export class MainScene extends Phaser.Scene {
     // Build entire connected dungeon floor
     this.roomManager.buildEntireFloor();
 
+    const meta = getFloorMeta(this.currentFloor);
+    events.emit('floor:changed', meta);
     if (this.uiScene && this.uiScene.hud) {
       this.uiScene.hud.renderMinimap(floorRooms, 0);
     }
@@ -316,6 +331,52 @@ export class MainScene extends Phaser.Scene {
     // Setup Camera for gameplay (1.4x zoom gives excellent pixel clarity)
     this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
     this.cameras.main.setZoom(1.4);
+    this.floatingNumbers.showNotice(playerSpawnX, playerSpawnY - 36, `TẦNG ${meta.code}: ${meta.biomeNameVi.toUpperCase()}`, meta.accentHex);
+  }
+
+  private advanceFromPortal(): void {
+    if (this.isTransitioningFloor || !this.isGameRunning) return;
+    if (this.currentFloor < TOTAL_FLOORS) {
+      this.transitionToNextFloor();
+    } else {
+      this.handleVictory();
+    }
+  }
+
+  private transitionToNextFloor(): void {
+    this.isTransitioningFloor = true;
+    audio.playRoomClear();
+    this.cameras.main.fade(200, 11, 13, 19, false, (_cam: any, progress: number) => {
+      if (progress < 1) return;
+
+      this.currentFloor += 1;
+      this.projectilePool.clearAll();
+      if (this.roomManager) {
+        this.roomManager.clearCurrentRoomVisuals();
+      }
+
+      const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor);
+      const corridors = DungeonGenerator.generateCorridors(floorRooms);
+      this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor);
+
+      const startRoom = floorRooms[0];
+      const spawnX = startRoom.worldX + startRoom.width / 2;
+      const spawnY = startRoom.worldY + startRoom.height / 2;
+
+      this.player.prepareForNextFloor(spawnX, spawnY);
+      this.pet.resetPosition(spawnX, spawnY);
+      this.roomManager.buildEntireFloor();
+
+      const meta = getFloorMeta(this.currentFloor);
+      events.emit('floor:changed', meta);
+      if (this.uiScene && this.uiScene.hud) {
+        this.uiScene.hud.renderMinimap(floorRooms, 0);
+      }
+
+      this.cameras.main.fadeIn(220, 11, 13, 19);
+      this.floatingNumbers.showNotice(spawnX, spawnY - 36, `TẦNG ${meta.code}: ${meta.biomeNameVi.toUpperCase()}`, meta.accentHex);
+      this.isTransitioningFloor = false;
+    });
   }
 
   private togglePause(): void {
@@ -333,26 +394,33 @@ export class MainScene extends Phaser.Scene {
 
   private handleGameOver(isVictory: boolean): void {
     this.isGameRunning = false;
+    const meta = getFloorMeta(this.currentFloor);
     const stats = {
       isVictory,
       timeSeconds: this.runTime,
       enemiesDefeated: this.enemiesDefeated,
-      roomsCleared: this.roomManager.rooms.filter(r => r.isCleared).length,
+      roomsCleared: Math.max(this.totalRoomsCleared, this.roomManager.rooms.filter(r => r.isCleared).length),
+      totalRooms: this.currentFloor * 8,
+      floorReached: `${meta.code} · ${meta.biomeNameVi}`,
       damageDealt: this.damageDealt
     };
     events.emit('game:over', stats);
   }
 
   private handleVictory(): void {
+    this.isTransitioningFloor = true;
     audio.playRoomClear();
     this.cameras.main.shake(400, 0.02);
     this.time.delayedCall(1200, () => {
       this.isGameRunning = false;
+      const meta = getFloorMeta(this.currentFloor);
       const stats = {
         isVictory: true,
         timeSeconds: this.runTime,
         enemiesDefeated: this.enemiesDefeated,
-        roomsCleared: this.roomManager.rooms.filter(r => r.isCleared).length,
+        roomsCleared: Math.max(this.totalRoomsCleared, this.roomManager.rooms.filter(r => r.isCleared).length),
+        totalRooms: this.currentFloor * 8,
+        floorReached: `${meta.code} · ${meta.biomeNameVi}`,
         damageDealt: this.damageDealt
       };
       events.emit('game:victory', stats);
@@ -381,7 +449,7 @@ export class MainScene extends Phaser.Scene {
       this.roomManager.doorColliders
     );
 
-    // 1b. Floor Spike Trap Damage (unless trap_shield upgrade is active)
+    // 1b. Floor Spike Trap & Biome Terrain Hazards (Ice Glide / Lava Burn)
     if (
       !this.player.upgrades.has('trap_shield') &&
       this.roomManager.isPlayerOnActiveTrap(this.player.sprite.x, this.player.sprite.y)
@@ -390,6 +458,10 @@ export class MainScene extends Phaser.Scene {
       if (trapHit !== null) {
         this.cameras.main.shake(120, 0.007);
       }
+    }
+    const hazard = this.roomManager.getHazardAt(this.player.sprite.x, this.player.sprite.y);
+    if (this.player.applyFloorHazard(hazard, deltaSec)) {
+      this.cameras.main.shake(120, 0.007);
     }
 
     // 2. Camera slight lookahead towards mouse
@@ -640,10 +712,10 @@ export class MainScene extends Phaser.Scene {
         }
       }
 
-      // Boss Exit Portal auto-triggers victory on close overlap
+      // Floor / Boss Exit Portal auto-triggers next floor or victory on close overlap
       if (p.type === 'portal' && dist < 24) {
         this.removePickup(p);
-        this.handleVictory();
+        this.advanceFromPortal();
         return;
       }
 
@@ -678,8 +750,12 @@ export class MainScene extends Phaser.Scene {
         prompt = '[E] Tiếp nhận Nâng Cấp Giả Kim';
       } else if (this.nearestPickup.type === 'statue') {
         prompt = `[E] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
+      } else if (this.nearestPickup.type === 'vending') {
+        prompt = `[E] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
+      } else if (this.nearestPickup.type === 'forge') {
+        prompt = `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
       } else if (this.nearestPickup.type === 'portal') {
-        prompt = '[E] Bước vào Cổng Hầm Ngục';
+        prompt = this.currentFloor < TOTAL_FLOORS ? '[E] Bước Vào Tầng Tiếp Theo' : '[E] Hoàn Thành Hầm Ngục';
       } else if (this.nearestPickup.type === 'shop_item') {
         prompt = `[E] Mua: ${this.nearestPickup.label}`;
       }
@@ -742,9 +818,41 @@ export class MainScene extends Phaser.Scene {
         audio.playGlassBreak();
         this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
       }
+    } else if (p.type === 'vending') {
+      const cost = p.price || 12;
+      if (this.player.spendCoins(cost)) {
+        const kinds: ('vitality' | 'energy' | 'haste')[] = ['vitality', 'energy', 'haste'];
+        const picked = Phaser.Utils.Array.GetRandom(kinds);
+        const msg = this.player.applyDrinkBuff(picked);
+        this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y - 24, msg, '#38bdf8');
+        this.removePickup(p);
+      } else {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
+      }
+    } else if (p.type === 'forge') {
+      const cost = p.price || 18;
+      const curWep = this.player.getCurrentWeapon();
+      if (this.player.getForgeLevel(curWep.id) >= 2) {
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Vũ khí đã đạt cấp tối đa (+2)!', '#f59e0b');
+        return;
+      }
+      if (this.player.spendCoins(cost)) {
+        const nextLevel = this.player.forgeCurrentWeapon();
+        this.floatingNumbers.showNotice(
+          p.sprite.x,
+          p.sprite.y - 24,
+          `Cường hóa ${curWep.nameVi} (+${nextLevel})!`,
+          '#f97316'
+        );
+        this.removePickup(p);
+      } else {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
+      }
     } else if (p.type === 'portal') {
       this.removePickup(p);
-      this.handleVictory();
+      this.advanceFromPortal();
     } else if (p.type === 'shop_item') {
       const price = p.price || 10;
       if (this.player.spendCoins(price)) {

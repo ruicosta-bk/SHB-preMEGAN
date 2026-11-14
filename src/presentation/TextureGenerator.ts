@@ -181,6 +181,138 @@ export class TextureGenerator {
     ctx.fillRect(12, 26, 8, 3);
     ctx.fillRect(12, 3, 8, 3);
     this.refresh(tm, 'door_open');
+
+    // --- BIOME 2: FROST CAVERN TILES ---
+    const drawBiomeFloor = (
+      key: string,
+      base: string,
+      tileA: string,
+      tileB: string,
+      grout: string,
+      accent?: (c: CanvasRenderingContext2D) => void
+    ) => {
+      const fctx = this.createCanvas(tm, key, 32, 32);
+      fctx.fillStyle = base;
+      fctx.fillRect(0, 0, 32, 32);
+      fctx.fillStyle = tileA;
+      fctx.fillRect(1, 1, 14, 14);
+      fctx.fillRect(17, 17, 14, 14);
+      fctx.fillStyle = tileB;
+      fctx.fillRect(17, 1, 14, 14);
+      fctx.fillRect(1, 17, 14, 14);
+      fctx.fillStyle = grout;
+      fctx.fillRect(0, 0, 32, 1);
+      fctx.fillRect(0, 15, 32, 2);
+      fctx.fillRect(0, 0, 1, 32);
+      fctx.fillRect(15, 0, 2, 32);
+      if (accent) accent(fctx);
+      this.refresh(tm, key);
+    };
+
+    drawBiomeFloor('frost_floor_tile', '#0c273b', '#123650', '#0e2c42', '#071926');
+    drawBiomeFloor('frost_floor_2', '#0c273b', '#123650', '#0e2c42', '#071926', c => {
+      c.fillStyle = '#67e8f9';
+      c.fillRect(6, 5, 3, 1);
+      c.fillRect(21, 21, 4, 2);
+      c.fillStyle = '#a5f3fc';
+      c.fillRect(22, 21, 2, 1);
+    });
+
+    ctx = this.createCanvas(tm, 'frost_wall_tile', 32, 32);
+    ctx.fillStyle = '#071622';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillStyle = '#1e5b78';
+    ctx.fillRect(1, 1, 30, 14);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(1, 1, 30, 3);
+    ctx.fillStyle = '#11374c';
+    ctx.fillRect(1, 16, 30, 14);
+    ctx.fillStyle = '#071926';
+    ctx.fillRect(15, 1, 2, 14);
+    ctx.fillRect(8, 16, 2, 14);
+    ctx.fillRect(22, 16, 2, 14);
+    ctx.fillStyle = '#a5f3fc';
+    ctx.fillRect(13, 13, 6, 3);
+    this.refresh(tm, 'frost_wall_tile');
+
+    ctx = this.createCanvas(tm, 'frost_pillar_tile', 32, 32);
+    ctx.fillStyle = '#071622';
+    ctx.fillRect(1, 1, 30, 30);
+    ctx.fillStyle = '#155e75';
+    ctx.fillRect(3, 3, 26, 15);
+    ctx.fillStyle = '#083344';
+    ctx.fillRect(3, 18, 26, 11);
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillRect(12, 6, 8, 14);
+    ctx.fillStyle = '#ecfeff';
+    ctx.fillRect(14, 8, 4, 5);
+    this.refresh(tm, 'frost_pillar_tile');
+
+    // Ice Slippery Floor Patch (32x32)
+    ctx = this.createCanvas(tm, 'ice_patch', 32, 32);
+    ctx.fillStyle = '#0891b2';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillRect(2, 2, 28, 28);
+    ctx.fillStyle = '#cffafe';
+    ctx.fillRect(5, 5, 10, 3);
+    ctx.fillRect(17, 19, 9, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(7, 6, 4, 1);
+    this.refresh(tm, 'ice_patch');
+
+    // --- BIOME 3: MOLTEN CORE TILES ---
+    drawBiomeFloor('lava_floor_tile', '#241214', '#2e1619', '#211012', '#130809');
+    drawBiomeFloor('lava_floor_2', '#241214', '#2e1619', '#211012', '#130809', c => {
+      c.fillStyle = '#9a3412';
+      c.fillRect(5, 6, 5, 1);
+      c.fillRect(20, 22, 4, 2);
+      c.fillStyle = '#f97316';
+      c.fillRect(21, 22, 2, 1);
+    });
+
+    ctx = this.createCanvas(tm, 'lava_wall_tile', 32, 32);
+    ctx.fillStyle = '#120708';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillStyle = '#4c1d1b';
+    ctx.fillRect(1, 1, 30, 14);
+    ctx.fillStyle = '#7f1d1d';
+    ctx.fillRect(1, 1, 30, 3);
+    ctx.fillStyle = '#2c1010';
+    ctx.fillRect(1, 16, 30, 14);
+    ctx.fillStyle = '#140808';
+    ctx.fillRect(15, 1, 2, 14);
+    ctx.fillRect(8, 16, 2, 14);
+    ctx.fillRect(22, 16, 2, 14);
+    ctx.fillStyle = '#f97316';
+    ctx.fillRect(13, 14, 6, 3);
+    this.refresh(tm, 'lava_wall_tile');
+
+    ctx = this.createCanvas(tm, 'lava_pillar_tile', 32, 32);
+    ctx.fillStyle = '#120708';
+    ctx.fillRect(1, 1, 30, 30);
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(3, 3, 26, 15);
+    ctx.fillStyle = '#290f02';
+    ctx.fillRect(3, 18, 26, 11);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(12, 7, 8, 13);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(14, 9, 4, 4);
+    this.refresh(tm, 'lava_pillar_tile');
+
+    // Molten Lava Hazard Pool (32x32)
+    ctx = this.createCanvas(tm, 'lava_pool', 32, 32);
+    ctx.fillStyle = '#9a3412';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(2, 2, 28, 28);
+    ctx.fillStyle = '#f97316';
+    ctx.fillRect(5, 5, 22, 22);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(8, 9, 5, 4);
+    ctx.fillRect(19, 19, 4, 4);
+    this.refresh(tm, 'lava_pool');
   }
 
   private static createEnvironmentAndTraps(tm: Phaser.Textures.TextureManager): void {
@@ -611,6 +743,26 @@ export class TextureGenerator {
     px(ctx, '#67e8f9', 21, 7, 4, 5);
     px(ctx, '#ffffff', 22, 8, 2, 2);
     this.refresh(tm, 'enemy_frost_mage');
+
+    // 6. Frost Knight (28x28): Glacial Armored Paladin with Horned Ice Helm & Spear
+    ctx = this.createCanvas(tm, 'enemy_frost_knight', 28, 28);
+    px(ctx, '#090b10', 4, 1, 4, 6);
+    px(ctx, '#090b10', 20, 1, 4, 6);
+    px(ctx, '#e0f2fe', 5, 2, 2, 4);
+    px(ctx, '#e0f2fe', 21, 2, 2, 4);
+    px(ctx, '#090b10', 6, 4, 16, 20);
+    px(ctx, '#0284c7', 7, 5, 14, 9);
+    px(ctx, '#38bdf8', 8, 5, 12, 4);
+    px(ctx, '#090b10', 9, 9, 10, 4);
+    px(ctx, '#22d3ee', 10, 10, 3, 2);
+    px(ctx, '#22d3ee', 15, 10, 3, 2);
+    px(ctx, '#1e3a8a', 7, 14, 14, 9);
+    px(ctx, '#bae6fd', 12, 15, 4, 6);
+    // Glacial halberd/spear on right side
+    px(ctx, '#090b10', 22, 3, 5, 20);
+    px(ctx, '#94a3b8', 24, 9, 2, 13);
+    px(ctx, '#67e8f9', 22, 4, 4, 6);
+    this.refresh(tm, 'enemy_frost_knight');
   }
 
   private static createBossFrames(tm: Phaser.Textures.TextureManager): void {
@@ -1010,6 +1162,50 @@ export class TextureGenerator {
     ctx.fillStyle = '#7dd3fc'; ctx.fillRect(4, 5, 2, 8);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(7, 9, 2, 2);
     this.refresh(tm, 'potion_energy_large');
+
+    // 11. Wave Spawn Warning X Marker (24x24)
+    ctx = this.createCanvas(tm, 'spawn_marker_x', 24, 24);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(4, 4); ctx.lineTo(20, 20);
+    ctx.moveTo(20, 4); ctx.lineTo(4, 20);
+    ctx.stroke();
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(6, 6); ctx.lineTo(18, 18);
+    ctx.moveTo(18, 6); ctx.lineTo(6, 18);
+    ctx.stroke();
+    this.refresh(tm, 'spawn_marker_x');
+
+    // 12. Beverage Vending Machine (28x36)
+    ctx = this.createCanvas(tm, 'vending_machine', 28, 36);
+    ctx.fillStyle = '#090b10'; ctx.fillRect(2, 2, 24, 32);
+    ctx.fillStyle = '#0284c7'; ctx.fillRect(4, 4, 20, 28);
+    ctx.fillStyle = '#38bdf8'; ctx.fillRect(4, 4, 20, 4);
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(6, 9, 13, 14);
+    // Colorful drink cans inside display window
+    ctx.fillStyle = '#ef4444'; ctx.fillRect(7, 11, 3, 4);
+    ctx.fillStyle = '#22c55e'; ctx.fillRect(11, 11, 3, 4);
+    ctx.fillStyle = '#facc15'; ctx.fillRect(15, 11, 3, 4);
+    ctx.fillStyle = '#a855f7'; ctx.fillRect(7, 17, 3, 4);
+    ctx.fillStyle = '#38bdf8'; ctx.fillRect(11, 17, 3, 4);
+    // Dispenser slot
+    ctx.fillStyle = '#090b10'; ctx.fillRect(6, 25, 14, 5);
+    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(20, 12, 3, 5);
+    this.refresh(tm, 'vending_machine');
+
+    // 13. Weapon Forge Anvil (32x28)
+    ctx = this.createCanvas(tm, 'forge_anvil', 32, 28);
+    ctx.fillStyle = '#090b10'; ctx.fillRect(2, 6, 28, 20);
+    ctx.fillStyle = '#334155'; ctx.fillRect(6, 16, 20, 9);
+    ctx.fillStyle = '#64748b'; ctx.fillRect(3, 8, 26, 8);
+    ctx.fillStyle = '#94a3b8'; ctx.fillRect(5, 8, 22, 3);
+    // Glowing hot ember runes & hammer spark
+    ctx.fillStyle = '#f97316'; ctx.fillRect(12, 11, 8, 3);
+    ctx.fillStyle = '#fef08a'; ctx.fillRect(14, 11, 4, 2);
+    this.refresh(tm, 'forge_anvil');
   }
 
   private static createIcons(tm: Phaser.Textures.TextureManager): void {

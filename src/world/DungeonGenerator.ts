@@ -1,4 +1,5 @@
-import { RoomState, RoomType, Direction, DoorData, RoomLayout, CorridorData } from '../types/room';
+import { RoomState, RoomType, Direction, DoorData, RoomLayout, CorridorData, EnemySpawnDef } from '../types/room';
+import { BiomeId, getFloorMeta } from '../data/biomes';
 
 // Deterministic Mulberry32 PRNG
 export class SeededRandom {
@@ -34,21 +35,34 @@ export class DungeonGenerator {
   public static readonly CELL_PITCH_PX = 29 * 32; // 928 px
 
   /**
-   * Generates 8 connected rooms deterministically from a numeric seed with random branching topology,
-   * varied room dimensions, traps, breakable crates, wall torches, and guaranteed path to Boss.
+   * Generates 8 connected rooms deterministically from a numeric seed & floor index (1..6)
+   * with random branching topology, varied room dimensions, biome hazards, combat waves, and guaranteed path to exit/boss.
    */
-  public static generateFloor(seed: number = 1337): RoomState[] {
-    const rng = new SeededRandom(seed);
+  public static generateFloor(seed: number = 1337, floorNumber: number = 1): RoomState[] {
+    const floorMeta = getFloorMeta(floorNumber);
+    const rng = new SeededRandom(seed + floorNumber * 7919);
+
+    const combatNamesByBiome: Record<BiomeId, string[]> = {
+      stone_crypt: ['Mật Thất Đá Ngầm I', 'Hành Lang Cổ Ngữ II', 'Lò Luyện Quái Vật III', 'Ngục Tối Cổ Xưa IV'],
+      frost_cavern: ['Động Băng Tuyết I', 'Hành Lang Pha Lê II', 'Đền Kỵ Sĩ Băng III', 'Hàn Băng Thâm Uyên IV'],
+      molten_core: ['Lò Dung Nham I', 'Hành Lang Obsidian II', 'Đấu Trường Hỏa Ngục III', 'Lõi Hỏa Diệm IV']
+    };
+    const combatTitles = combatNamesByBiome[floorMeta.biomeId];
 
     const roomSequence: { type: RoomType; titleVi: string }[] = [
-      { type: 'start', titleVi: 'Sảnh Xuất Phát' },
-      { type: 'combat', titleVi: 'Mật Thất Đá Ngầm I' },
-      { type: 'combat', titleVi: 'Hành Lang Cổ Ngữ II' },
-      { type: 'treasure', titleVi: 'Kho Báu & Tượng Thần' },
-      { type: 'combat', titleVi: 'Lò Luyện Quái Vật III' },
-      { type: 'combat', titleVi: 'Ngục Tối Dung Nham IV' },
-      { type: 'rest', titleVi: 'Trạm Thương Gia Giả Kim' },
-      { type: 'boss', titleVi: 'Đại Điện Ignis Ignifer' }
+      { type: 'start', titleVi: `[${floorMeta.code}] Sảnh Xuất Phát` },
+      { type: 'combat', titleVi: `[${floorMeta.code}] ${combatTitles[0]}` },
+      { type: 'combat', titleVi: `[${floorMeta.code}] ${combatTitles[1]}` },
+      { type: 'treasure', titleVi: `[${floorMeta.code}] Kho Báu & Tượng Thần` },
+      { type: 'combat', titleVi: `[${floorMeta.code}] ${combatTitles[2]}` },
+      { type: 'combat', titleVi: `[${floorMeta.code}] ${combatTitles[3]}` },
+      { type: 'rest', titleVi: `[${floorMeta.code}] Trạm Thương Gia & Lò Rèn` },
+      {
+        type: 'boss',
+        titleVi: floorMeta.isBossFloor
+          ? `[${floorMeta.code}] ${floorMeta.bossTitleVi}`
+          : `[${floorMeta.code}] Pháo Đài Hộ Vệ Cổng`
+      }
     ];
 
     // Build deterministic random grid topology
@@ -116,7 +130,7 @@ export class DungeonGenerator {
     for (let i = 0; i < roomSequence.length; i++) {
       const { type, titleVi } = roomSequence[i];
       const { gx, gy } = coords[i];
-      const layout = this.createLayoutForRoom(type, i, rng);
+      const layout = this.createLayoutForRoom(type, i, floorMeta.biomeId, rng);
       const width = layout.width * this.TILE_SIZE;
       const height = layout.height * this.TILE_SIZE;
 
@@ -125,11 +139,13 @@ export class DungeonGenerator {
       const worldX = cellCenterX - width / 2;
       const worldY = cellCenterY - height / 2;
 
-      const enemySpawns = this.generateEnemySpawns(type, i, rng);
+      const { wave1, waves } = this.generateEnemyWaves(type, i, floorMeta.stage, floorMeta.isBossFloor, floorMeta.biomeId, rng);
 
       rooms.push({
         index: i,
         type,
+        biomeId: floorMeta.biomeId,
+        floorNumber: floorMeta.floorNumber,
         titleVi,
         gridX: gx,
         gridY: gy,
@@ -142,7 +158,8 @@ export class DungeonGenerator {
         isCurrent: i === 0,
         doors: [],
         layout,
-        enemySpawns,
+        enemySpawns: wave1,
+        waves,
         rewardSpawned: false
       });
     }
@@ -295,7 +312,12 @@ export class DungeonGenerator {
     };
   }
 
-  private static createLayoutForRoom(type: RoomType, idx: number, rng: SeededRandom): RoomLayout {
+  private static createLayoutForRoom(
+    type: RoomType,
+    idx: number,
+    biomeId: BiomeId,
+    rng: SeededRandom
+  ): RoomLayout {
     if (type === 'start') {
       return {
         width: 17,
@@ -368,6 +390,7 @@ export class DungeonGenerator {
     const patternRoll = rng.rangeInt(0, 3);
     const walls: { x: number; y: number }[] = [];
     const traps: { x: number; y: number }[] = [];
+    const hazards: { x: number; y: number; kind: 'ice' | 'lava' }[] = [];
     const crates: { x: number; y: number }[] = [];
 
     const mx = Math.floor(dims.w / 2);
@@ -410,11 +433,34 @@ export class DungeonGenerator {
       );
     }
 
+    // Add Biome 2 icy patches or Biome 3 molten lava pools cleanly away from doorways/walls
+    const wallSet = new Set(walls.map(w => `${w.x},${w.y}`));
+    const addHazardPatch = (cx: number, cy: number, kind: 'ice' | 'lava') => {
+      for (let ox = 0; ox <= 1; ox++) {
+        for (let oy = 0; oy <= 1; oy++) {
+          const hx = cx + ox;
+          const hy = cy + oy;
+          if (!wallSet.has(`${hx},${hy}`)) {
+            hazards.push({ x: hx, y: hy, kind });
+          }
+        }
+      }
+    };
+
+    if (biomeId === 'frost_cavern') {
+      addHazardPatch(mx - 2, my - 1, 'ice');
+      addHazardPatch(mx + 1, my, 'ice');
+    } else if (biomeId === 'molten_core') {
+      addHazardPatch(3, 3, 'lava');
+      addHazardPatch(dims.w - 5, dims.h - 5, 'lava');
+    }
+
     return {
       width: dims.w,
       height: dims.h,
       walls,
       traps,
+      hazards,
       crates,
       torches: [{ x: 4, y: 0 }, { x: dims.w - 5, y: 0 }],
       floorPattern: 'standard',
@@ -422,17 +468,38 @@ export class DungeonGenerator {
     };
   }
 
-  private static generateEnemySpawns(
+  private static generateEnemyWaves(
     type: RoomType,
     roomIndex: number,
+    stage: number,
+    isBossFloor: boolean,
+    biomeId: BiomeId,
     rng: SeededRandom
-  ): { type: string; x: number; y: number; isElite?: boolean }[] {
+  ): { wave1: EnemySpawnDef[]; waves: EnemySpawnDef[][] } {
     if (type === 'start' || type === 'treasure' || type === 'rest') {
-      return [];
+      return { wave1: [], waves: [] };
     }
 
     if (type === 'boss') {
-      return [{ type: 'boss_ignis', x: 0.65, y: 0.5 }];
+      if (isBossFloor) {
+        return { wave1: [{ type: 'boss_ignis', x: 0.65, y: 0.5 }], waves: [] };
+      }
+      // Sub-floor 1 Exit Guardian Chamber: Elite Captain + escorts in 2 quick waves
+      const guardian = biomeId === 'frost_cavern' ? 'frost_knight' : biomeId === 'molten_core' ? 'charger' : 'fan_caster';
+      return {
+        wave1: [
+          { type: guardian, x: 0.62, y: 0.36, isElite: true },
+          { type: 'shooter', x: 0.68, y: 0.68 },
+          { type: 'grunt', x: 0.45, y: 0.5 }
+        ],
+        waves: [
+          [
+            { type: guardian, x: 0.5, y: 0.5, isElite: true },
+            { type: 'frost_mage', x: 0.3, y: 0.32 },
+            { type: 'charger', x: 0.72, y: 0.68 }
+          ]
+        ]
+      };
     }
 
     const safeSpots = [
@@ -446,27 +513,45 @@ export class DungeonGenerator {
       { x: 0.76, y: 0.5 }
     ];
 
-    const pool = ['grunt', 'shooter'];
-    if (roomIndex >= 2) pool.push('fan_caster', 'frost_mage');
-    if (roomIndex >= 4) pool.push('charger');
-
-    const count = roomIndex <= 2 ? 4 : 5;
-    const spawns: { type: string; x: number; y: number; isElite?: boolean }[] = [];
-
-    const shuffled = [...safeSpots];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(rng.next() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    const pool: string[] = ['grunt', 'shooter'];
+    if (biomeId === 'stone_crypt') {
+      if (roomIndex >= 2) pool.push('fan_caster', 'frost_mage');
+      if (roomIndex >= 4) pool.push('charger');
+    } else if (biomeId === 'frost_cavern') {
+      pool.push('frost_mage', 'frost_knight');
+      if (roomIndex >= 4) pool.push('charger');
+    } else {
+      pool.push('fan_caster', 'charger', 'frost_knight');
     }
 
-    for (let i = 0; i < count; i++) {
-      const spot = shuffled[i];
-      const eType = rng.pick(pool);
-      // 25% chance for Elite enemy from room 2 onwards (cap 1-2 per room)
-      const isElite = roomIndex >= 2 && i === 0 && rng.next() < 0.65;
-      spawns.push({ type: eType, x: spot.x, y: spot.y, isElite });
+    const pickWave = (count: number, eliteChance: number): EnemySpawnDef[] => {
+      const shuffled = [...safeSpots];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng.next() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      const res: EnemySpawnDef[] = [];
+      for (let i = 0; i < count; i++) {
+        const spot = shuffled[i];
+        const eType = rng.pick(pool);
+        const isElite = i === 0 && rng.next() < eliteChance;
+        res.push({ type: eType, x: spot.x, y: spot.y, isElite });
+      }
+      return res;
+    };
+
+    const baseCount = Math.min(5, 3 + Math.floor((stage + (roomIndex >= 4 ? 1 : 0)) / 2));
+    const eliteChance = Math.min(0.85, (roomIndex >= 2 ? 0.35 : 0.1) + (stage - 1) * 0.2);
+
+    const wave1 = pickWave(baseCount, eliteChance * 0.7);
+    const wave2 = pickWave(Math.max(3, baseCount - 1), eliteChance);
+    const waves: EnemySpawnDef[][] = [wave2];
+
+    // Deeper rooms or higher stages add a fast 3rd reinforcement wave
+    if (roomIndex >= 4 || stage >= 2) {
+      waves.push(pickWave(3, eliteChance));
     }
 
-    return spawns;
+    return { wave1, waves };
   }
 }

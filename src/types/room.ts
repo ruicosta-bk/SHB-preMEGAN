@@ -1,3 +1,5 @@
+import { BiomeId } from '../data/biomes';
+
 export type RoomType = 'start' | 'combat' | 'treasure' | 'rest' | 'boss';
 
 export type Direction = 'north' | 'south' | 'east' | 'west';
@@ -17,10 +19,19 @@ export interface RoomLayout {
   height: number; // in tiles
   walls: { x: number; y: number }[]; // internal pillar/wall obstacles
   traps?: { x: number; y: number }[]; // spike trap tile coords
+  hazards?: { x: number; y: number; kind: 'ice' | 'lava' }[]; // biome floor hazards
   crates?: { x: number; y: number }[]; // breakable crate tile coords
   torches?: { x: number; y: number }[]; // torch tile coords on north/perimeter walls
   floorPattern?: 'standard' | 'mosaic' | 'carpet' | 'rune';
   doors: Direction[];
+}
+
+export interface EnemySpawnDef {
+  type: string;
+  x: number;
+  y: number;
+  delay?: number;
+  isElite?: boolean;
 }
 
 export interface CorridorData {
@@ -38,6 +49,8 @@ export interface CorridorData {
 export interface RoomState {
   index: number;
   type: RoomType;
+  biomeId?: BiomeId;
+  floorNumber?: number;
   titleVi: string;
   gridX: number;
   gridY: number;
@@ -50,6 +63,7 @@ export interface RoomState {
   isCurrent: boolean;
   doors: DoorData[];
   layout: RoomLayout;
-  enemySpawns: { type: string; x: number; y: number; delay?: number; isElite?: boolean }[];
+  enemySpawns: EnemySpawnDef[];
+  waves?: EnemySpawnDef[][]; // Optional subsequent combat waves
   rewardSpawned: boolean;
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DungeonGenerator } from '../src/world/DungeonGenerator';
+import { getFloorMeta, TOTAL_FLOORS } from '../src/data/biomes';
 
 describe('DungeonGenerator Unit Tests', () => {
   it('generates exactly 8 rooms of correct types', () => {
@@ -93,5 +94,37 @@ describe('DungeonGenerator Unit Tests', () => {
         expect(overlapX && overlapY).toBe(false);
       }
     }
+  });
+
+  it('supports 6 multi-biome floors with combat waves and biome hazards', () => {
+    expect(TOTAL_FLOORS).toBe(6);
+
+    const meta1 = getFloorMeta(1);
+    const meta3 = getFloorMeta(3);
+    const meta6 = getFloorMeta(6);
+
+    expect(meta1.code).toBe('1-1');
+    expect(meta1.biomeId).toBe('stone_crypt');
+    expect(meta1.isBossFloor).toBe(false);
+
+    expect(meta3.code).toBe('2-1');
+    expect(meta3.biomeId).toBe('frost_cavern');
+
+    expect(meta6.code).toBe('3-2');
+    expect(meta6.biomeId).toBe('molten_core');
+    expect(meta6.isBossFloor).toBe(true);
+
+    const floor3Rooms = DungeonGenerator.generateFloor(1234, 3);
+    const floor6Rooms = DungeonGenerator.generateFloor(1234, 6);
+
+    // Combat rooms have multi-wave reinforcements and biome terrain hazards
+    const f3Combat = floor3Rooms.find(r => r.type === 'combat')!;
+    expect(f3Combat.waves && f3Combat.waves.length).toBeGreaterThanOrEqual(1);
+    expect(f3Combat.layout.hazards?.some(h => h.kind === 'ice')).toBe(true);
+
+    const f6Combat = floor6Rooms.find(r => r.type === 'combat')!;
+    expect(f6Combat.layout.hazards?.some(h => h.kind === 'lava')).toBe(true);
+    const f6Boss = floor6Rooms.find(r => r.type === 'boss')!;
+    expect(f6Boss.enemySpawns[0].type).toBe('boss_ignis');
   });
 });

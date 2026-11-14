@@ -129,7 +129,7 @@ export class HUD {
     this.minimapGraphics = scene.add.graphics();
     this.container.add(this.minimapGraphics);
 
-    this.roomTitleText = scene.add.text(1178, 122, 'Sảnh Xuất Phát', { ...fontStyle, fontSize: '11px', color: '#cbd5e1' }).setOrigin(0.5, 0);
+    this.roomTitleText = scene.add.text(1178, 122, '[1-1] Sảnh Xuất Phát', { ...fontStyle, fontSize: '10px', color: '#cbd5e1' }).setOrigin(0.5, 0);
     this.container.add(this.roomTitleText);
 
     // --- 4. BOSS HEALTH BAR (Top-Center) ---
@@ -179,6 +179,11 @@ export class HUD {
 
     events.on('combat:boss-stats', (data: any) => {
       this.updateBoss(data);
+    });
+
+    events.on('floor:changed', (meta: { code: string; biomeNameVi: string; accentHex: string }) => {
+      this.bossContainer.setVisible(false);
+      this.roomTitleText.setColor(meta.accentHex || '#cbd5e1');
     });
 
     events.on('room:entered', (data: any) => {

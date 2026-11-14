@@ -6,6 +6,8 @@ export interface RunStats {
   timeSeconds: number;
   enemiesDefeated: number;
   roomsCleared: number;
+  totalRooms?: number;
+  floorReached?: string;
   damageDealt: number;
 }
 
@@ -72,10 +74,12 @@ export class GameOverModal {
     const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
     // Stats box
+    const floorLine = stats.floorReached ? `Tầng đạt tới: ${stats.floorReached}` : '';
     const statLines = [
+      ...(floorLine ? [floorLine] : []),
       `Thời gian chinh chiến: ${timeFormatted}`,
       `Quái vật đã tiêu diệt: ${stats.enemiesDefeated}`,
-      `Phòng đã giải phóng: ${stats.roomsCleared} / 8`,
+      `Phòng đã giải phóng: ${stats.roomsCleared}${stats.totalRooms ? ` / ${stats.totalRooms}` : ''}`,
       `Tổng sát thương gây ra: ${Math.round(stats.damageDealt)}`
     ];
 

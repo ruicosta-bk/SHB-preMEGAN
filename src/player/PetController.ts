@@ -27,6 +27,14 @@ export class PetController {
     this.guardRing = scene.add.graphics().setDepth(8);
   }
 
+  public resetPosition(x: number, y: number): void {
+    this.state = 'follow';
+    this.pounceTarget = null;
+    this.sprite.setPosition(x - 28, y + 4);
+    this.shadow.setPosition(x - 28, y + 10);
+    this.guardRing.clear();
+  }
+
   public update(
     deltaSec: number,
     playerX: number,

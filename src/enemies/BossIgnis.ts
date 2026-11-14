@@ -21,8 +21,17 @@ export class BossIgnis extends EnemyBase {
   private slamTargetY: number = 0;
   private slamGraphic: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, 'boss_ignis_p1', 150, 45);
+  private stage: number = 1;
+  private bossNameVi: string = 'Ignis Ignifer - Đại Pháp Sư Luyện Kim';
+
+  constructor(scene: Phaser.Scene, x: number, y: number, stage: number = 1, bossNameVi?: string) {
+    const p1Hp = 130 + (stage - 1) * 45;
+    super(scene, x, y, 'boss_ignis_p1', p1Hp, 45 + (stage - 1) * 6);
+    this.stage = stage;
+    if (bossNameVi) this.bossNameVi = bossNameVi;
+    if (stage === 2) {
+      this.sprite.setTint(0x67e8f9);
+    }
     this.shadow.setScale(1.8, 1.4);
     this.sprite.setScale(1.2);
     this.slamGraphic = scene.add.graphics().setDepth(11);
@@ -49,10 +58,11 @@ export class BossIgnis extends EnemyBase {
     // Check Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
-      this.hp = 120;
-      this.maxHp = 120;
+      const p2Hp = 100 + (this.stage - 1) * 40;
+      this.hp = p2Hp;
+      this.maxHp = p2Hp;
       this.sprite.setTexture('boss_ignis_p2');
-      this.sprite.setTint(0xff6666);
+      this.sprite.setTint(this.stage === 2 ? 0x38bdf8 : 0xff6666);
       this.attackState = 'vulnerable';
       this.stateTimer = 2.0;
 
@@ -72,7 +82,7 @@ export class BossIgnis extends EnemyBase {
         currentHp: 0,
         maxHp: this.maxHp,
         phase: this.phase,
-        nameVi: 'Ignis Ignifer',
+        nameVi: this.bossNameVi,
         isDead: true
       });
       this.onDeath();
@@ -260,7 +270,7 @@ export class BossIgnis extends EnemyBase {
       currentHp: Math.max(0, this.hp),
       maxHp: this.maxHp,
       phase: this.phase,
-      nameVi: 'Ignis Ignifer - Đại Pháp Sư Luyện Kim',
+      nameVi: this.bossNameVi,
       isDead: this.isDead
     });
   }

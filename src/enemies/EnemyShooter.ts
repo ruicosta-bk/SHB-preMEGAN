@@ -9,10 +9,23 @@ export class EnemyShooter extends EnemyBase {
   private isAiming: boolean = false;
   private laserGraphic: Phaser.GameObjects.Graphics;
   private lockedAngle: number = 0;
-  private variant: 'shooter' | 'frost_mage';
+  private variant: 'shooter' | 'frost_mage' | 'frost_knight';
 
-  constructor(scene: Phaser.Scene, x: number, y: number, variant: 'shooter' | 'frost_mage' = 'shooter') {
-    super(scene, x, y, variant === 'frost_mage' ? 'enemy_frost_mage' : 'enemy_shooter', variant === 'frost_mage' ? 14 : 12, 75);
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    variant: 'shooter' | 'frost_mage' | 'frost_knight' = 'shooter'
+  ) {
+    const tex =
+      variant === 'frost_knight'
+        ? 'enemy_frost_knight'
+        : variant === 'frost_mage'
+        ? 'enemy_frost_mage'
+        : 'enemy_shooter';
+    const hp = variant === 'frost_knight' ? 18 : variant === 'frost_mage' ? 14 : 12;
+    const speed = variant === 'frost_knight' ? 85 : 75;
+    super(scene, x, y, tex, hp, speed);
     this.variant = variant;
     this.laserGraphic = scene.add.graphics().setDepth(11);
   }
@@ -46,7 +59,8 @@ export class EnemyShooter extends EnemyBase {
 
       // Draw laser aim telegraph
       this.laserGraphic.clear();
-      this.laserGraphic.lineStyle(1.5, this.variant === 'frost_mage' ? 0x38bdf8 : 0xef4444, 0.7);
+      const isFrost = this.variant === 'frost_mage' || this.variant === 'frost_knight';
+      this.laserGraphic.lineStyle(1.5, isFrost ? 0x38bdf8 : 0xef4444, 0.7);
       this.laserGraphic.beginPath();
       this.laserGraphic.moveTo(this.sprite.x, this.sprite.y);
       this.laserGraphic.lineTo(
@@ -58,10 +72,25 @@ export class EnemyShooter extends EnemyBase {
       if (this.aimTimer <= 0) {
         this.isAiming = false;
         this.laserGraphic.clear();
-        this.shootCooldownRemaining = 2.2;
+        this.shootCooldownRemaining = this.variant === 'frost_knight' ? 2.0 : 2.2;
 
         audio.playEnemyShoot();
-        if (this.variant === 'frost_mage') {
+        if (this.variant === 'frost_knight') {
+          // Frost Knight fires a tight 3-shard glacial fan that slows the player
+          for (const offset of [-0.22, 0, 0.22]) {
+            pool.spawn({
+              x: this.sprite.x + Math.cos(this.lockedAngle + offset) * 16,
+              y: this.sprite.y + Math.sin(this.lockedAngle + offset) * 16,
+              angleRad: this.lockedAngle + offset,
+              speed: 330,
+              damage: 2,
+              isPlayer: false,
+              element: 'frost',
+              texture: 'bullet_enemy_frost',
+              range: 480
+            });
+          }
+        } else if (this.variant === 'frost_mage') {
           // Frost mage fires 2 chilled ice shards that briefly slow the player
           for (const offset of [-0.14, 0.14]) {
             pool.spawn({

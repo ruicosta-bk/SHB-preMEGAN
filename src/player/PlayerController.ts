@@ -102,6 +102,14 @@ export class PlayerController {
   private bobTimer: number = 0;
   private dustTimer: number = 0;
 
+  // Milestone 4: Weapon forge upgrades, Vending drink buffs & Biome terrain hazards
+  public forgeLevels: Map<string, number> = new Map();
+  private fireRateBonus: number = 1.0;
+  private isOnIce: boolean = false;
+  private glideVx: number = 0;
+  private glideVy: number = 0;
+  private lavaTickTimer: number = 0;
+
   constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist') {
     this.scene = scene;
     this.heroId = heroId;
@@ -236,6 +244,76 @@ export class PlayerController {
     }
 
     this.emitStats();
+  }
+
+  public getForgeLevel(weaponId: string): number {
+    return this.forgeLevels.get(weaponId) || 0;
+  }
+
+  public forgeCurrentWeapon(): number | null {
+    const cur = this.getCurrentWeapon();
+    const level = this.getForgeLevel(cur.id);
+    if (level >= 2) return null;
+    const nextLevel = level + 1;
+    this.forgeLevels.set(cur.id, nextLevel);
+    audio.playPickup();
+    this.emitWeaponChange();
+    return nextLevel;
+  }
+
+  public applyDrinkBuff(kind: 'vitality' | 'energy' | 'haste'): string {
+    audio.playPickup();
+    if (kind === 'vitality') {
+      this.stats.maxHp += 2;
+      this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + 2);
+      this.emitStats();
+      return 'Nước Tăng Lực Đỏ (+2 HP tối đa)';
+    }
+    if (kind === 'energy') {
+      this.stats.maxEnergy += 40;
+      this.stats.energy = Math.min(this.stats.maxEnergy, this.stats.energy + 40);
+      this.skillCooldownMax = Math.max(2.0, Number((this.skillCooldownMax * 0.85).toFixed(2)));
+      this.emitStats();
+      return 'Soda Năng Lượng (+40 NL, -15% Hồi Chiêu [F])';
+    }
+    this.stats.speed = Math.round(this.stats.speed * 1.12);
+    this.fireRateBonus = Number((this.fireRateBonus * 1.1).toFixed(2));
+    return 'Cà Phê Siêu Tốc (+12% Tốc Chạy, +10% Tốc Bắn)';
+  }
+
+  public applyFloorHazard(hazard: 'ice' | 'lava' | null, deltaSec: number): boolean {
+    this.isOnIce = hazard === 'ice';
+    if (hazard === 'lava' && !this.upgrades.has('trap_shield')) {
+      this.lavaTickTimer -= deltaSec;
+      if (this.lavaTickTimer <= 0) {
+        this.lavaTickTimer = 0.85;
+        return this.takeDamage({ amount: 1, element: 'fire', isPlayerAttack: false }) !== null;
+      }
+    } else {
+      this.lavaTickTimer = Math.min(this.lavaTickTimer, 0.2);
+    }
+    return false;
+  }
+
+  public prepareForNextFloor(x: number, y: number): void {
+    this.sprite.setPosition(x, y);
+    this.shadow.setPosition(x, y + 10);
+    this.weaponSprite.setPosition(x + 12, y + 3);
+    this.isDashing = false;
+    this.dashTimer = 0;
+    this.isChargingBow = false;
+    this.bowChargeTime = 0;
+    this.bowChargeGfx?.clear();
+    this.frostSlowTimer = 0;
+    this.isOnIce = false;
+    this.glideVx = 0;
+    this.glideVy = 0;
+    this.sprite.clearTint();
+    this.stats.armor = this.stats.maxArmor;
+    this.stats.energy = Math.min(this.stats.maxEnergy, this.stats.energy + 25);
+    this.emitStats();
+    this.emitWeaponChange();
+    this.emitCoins();
   }
 
   public applyFrostSlow(duration: number = 1.2): void {
@@ -416,9 +494,21 @@ export class PlayerController {
         this.isDashing = false;
       }
     } else {
-      const speedMult = this.frostSlowTimer > 0 ? 0.65 : 1.0;
-      vx = moveDx * this.stats.speed * speedMult;
-      vy = moveDy * this.stats.speed * speedMult;
+      const speedMult = (this.frostSlowTimer > 0 ? 0.65 : 1.0) * (this.isOnIce ? 1.16 : 1.0);
+      const targetVx = moveDx * this.stats.speed * speedMult;
+      const targetVy = moveDy * this.stats.speed * speedMult;
+      if (this.isOnIce) {
+        const slideLerp = Math.min(1, deltaSec * 4.5);
+        this.glideVx += (targetVx - this.glideVx) * slideLerp;
+        this.glideVy += (targetVy - this.glideVy) * slideLerp;
+        vx = this.glideVx;
+        vy = this.glideVy;
+      } else {
+        this.glideVx = targetVx;
+        this.glideVy = targetVy;
+        vx = targetVx;
+        vy = targetVy;
+      }
 
       // Animate walk frames
       if (moveLen > 0) {
@@ -605,12 +695,13 @@ export class PlayerController {
       this.emitStats();
     }
 
-    this.shootCooldownRemaining = 1 / weapon.fireRate;
+    this.shootCooldownRemaining = 1 / (weapon.fireRate * this.fireRateBonus);
 
     // Critical focus upgrade or Rogue guaranteed crit
     const isCrit = this.guaranteedNextCrit || (this.upgrades.has('critical_focus') && Math.random() < 0.25);
     this.guaranteedNextCrit = false;
-    const damageMultiplier = isCrit ? 2.0 : 1.0;
+    const forgeMult = 1 + this.getForgeLevel(weapon.id) * 0.25;
+    const damageMultiplier = (isCrit ? 2.0 : 1.0) * forgeMult;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
     const extraBounce = this.upgrades.has('ricochet') ? 1 : 0;
 
@@ -747,6 +838,7 @@ export class PlayerController {
       (this.upgrades.has('critical_focus') && Math.random() < 0.25);
     this.guaranteedNextCrit = false;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
+    const forgeMult = 1 + this.getForgeLevel(weapon.id) * 0.25;
 
     this.weaponRecoilOffset = 5;
     audio.playShootPenetrator();
@@ -756,7 +848,7 @@ export class PlayerController {
       y: this.sprite.y + Math.sin(aimAngle) * 18,
       angleRad: aimAngle,
       speed: weapon.bulletSpeed * (0.65 + 0.45 * chargeRatio),
-      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0))),
+      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0) * forgeMult)),
       isPlayer: true,
       isCrit,
       texture: weapon.bulletTexture,
@@ -1036,11 +1128,20 @@ export class PlayerController {
 
   private emitWeaponChange(): void {
     const cur = this.getCurrentWeapon();
+    const forgeLvl = this.getForgeLevel(cur.id);
+    const displayWeapon: WeaponData =
+      forgeLvl > 0
+        ? {
+            ...cur,
+            nameVi: `${cur.nameVi} (+${forgeLvl})`,
+            damage: Math.round(cur.damage * (1 + forgeLvl * 0.25))
+          }
+        : cur;
     if (this.weaponSprite) {
       this.weaponSprite.setTexture(cur.handTexture);
     }
     events.emit('player:weapon-swapped', {
-      current: cur,
+      current: displayWeapon,
       secondary: this.getSecondaryWeapon(),
       activeIndex: this.activeSlotIndex
     });
