@@ -51,14 +51,14 @@ export class EnemyCharger extends EnemyBase {
 
       case 'windup':
         this.timer -= deltaSec;
-        // Draw charge direction warning path
+        // Draw subtle dashed-style charge warning guide (180px)
         this.lineGraphic.clear();
-        this.lineGraphic.lineStyle(2, 0xf97316, 0.8);
+        this.lineGraphic.lineStyle(1.5, 0xf97316, 0.45);
         this.lineGraphic.beginPath();
         this.lineGraphic.moveTo(this.sprite.x, this.sprite.y);
         this.lineGraphic.lineTo(
-          this.sprite.x + Math.cos(this.chargeAngle) * 320,
-          this.sprite.y + Math.sin(this.chargeAngle) * 320
+          this.sprite.x + Math.cos(this.chargeAngle) * 180,
+          this.sprite.y + Math.sin(this.chargeAngle) * 180
         );
         this.lineGraphic.strokePath();
 
@@ -122,6 +122,11 @@ export class EnemyCharger extends EnemyBase {
         }
         break;
     }
+  }
+
+  protected override onDeath(): void {
+    this.lineGraphic.clear();
+    super.onDeath();
   }
 
   public override destroy(): void {

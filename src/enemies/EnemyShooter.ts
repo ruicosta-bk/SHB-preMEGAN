@@ -142,6 +142,11 @@ export class EnemyShooter extends EnemyBase {
     }
   }
 
+  protected override onDeath(): void {
+    this.laserGraphic.clear();
+    super.onDeath();
+  }
+
   public override destroy(): void {
     this.laserGraphic.destroy();
     super.destroy();

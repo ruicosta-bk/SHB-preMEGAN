@@ -700,9 +700,8 @@ export class MainScene extends Phaser.Scene {
     const px = this.player.sprite.x;
     const py = this.player.sprite.y;
     const roomCleared = this.roomManager.getCurrentRoom()?.isCleared ?? false;
-    const magnetRadius = roomCleared ? 360 : 175;
-    const magnetSpeed = roomCleared ? 540 : 420;
-    const collectRadius = 28;
+    const triggerRadius = roomCleared ? 340 : 155;
+    const collectRadius = 22;
 
     this.nearestPickup = null;
     let closestDist = 999;
@@ -712,15 +711,24 @@ export class MainScene extends Phaser.Scene {
       if (!p || !p.sprite.active) continue;
       const dist = Math.hypot(px - p.sprite.x, py - p.sprite.y);
 
-      // Generous Soul Knight magnetic pull for coins, energy crystals, and hearts
+      // Smooth Soul Knight magnet: stop bobbing tween once triggered so pickup glides seamlessly to hero
       if (p.type === 'coin' || p.type === 'energy' || p.type === 'heart') {
-        if (dist < magnetRadius && dist > 1) {
-          const angle = Math.atan2(py - p.sprite.y, px - p.sprite.x);
-          const pull = Math.min(dist, magnetSpeed * deltaSec);
-          p.sprite.x += Math.cos(angle) * pull;
-          p.sprite.y += Math.sin(angle) * pull;
+        if (!p.isMagnetized && dist <= triggerRadius) {
+          p.isMagnetized = true;
+          p.magnetSpeed = 180;
+          this.tweens.killTweensOf(p.sprite);
         }
-        if (dist < collectRadius) {
+
+        if (p.isMagnetized && dist > 1) {
+          p.magnetSpeed = Math.min(720, (p.magnetSpeed ?? 180) + 1400 * deltaSec);
+          const angle = Math.atan2(py - p.sprite.y, px - p.sprite.x);
+          const step = Math.min(dist, p.magnetSpeed * deltaSec);
+          p.sprite.x += Math.cos(angle) * step;
+          p.sprite.y += Math.sin(angle) * step;
+        }
+
+        const newDist = Math.hypot(px - p.sprite.x, py - p.sprite.y);
+        if (newDist <= collectRadius) {
           if (p.type === 'coin') {
             this.player.addCoins(p.data || 1);
             audio.playCoinPickup();

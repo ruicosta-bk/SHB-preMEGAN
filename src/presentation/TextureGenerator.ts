@@ -888,16 +888,24 @@ export class TextureGenerator {
       px(ctx, gold, 26, 1, 4, 10);
       px(ctx, gold, 37, 3, 4, 9);
 
-      // Armored Skull / Helm
+      // Armored Skull / Helm (horned obsidian brow + fierce arched eyes, no flat black visor!)
       px(ctx, o, 15, 10, 26, 16);
       px(ctx, armor, 17, 12, 22, 12);
       px(ctx, armorHi, 19, 12, 18, 5);
-      // Glowing Archmage Visor & Eyes
-      px(ctx, o, 19, 17, 18, 6);
-      px(ctx, core, 21, 18, 5, 4);
-      px(ctx, core, 30, 18, 5, 4);
-      px(ctx, '#ffffff', 22, 19, 2, 2);
-      px(ctx, '#ffffff', 31, 19, 2, 2);
+      // Heavy iron nose bridge + recessed brow slits
+      px(ctx, o, 19, 17, 7, 4);
+      px(ctx, o, 30, 17, 7, 4);
+      px(ctx, gold, 26, 15, 4, 7);
+      px(ctx, core, 21, 18, 4, 2);
+      px(ctx, core, 31, 18, 4, 2);
+      px(ctx, '#ffffff', 22, 18, 2, 1);
+      px(ctx, '#ffffff', 32, 18, 2, 1);
+      // Gritted furnace jaw teeth
+      px(ctx, o, 20, 22, 16, 3);
+      px(ctx, gold, 21, 22, 2, 2);
+      px(ctx, gold, 25, 22, 2, 2);
+      px(ctx, gold, 29, 22, 2, 2);
+      px(ctx, gold, 33, 22, 2, 2);
 
       // Heavy Spiked Shoulder Pauldrons
       px(ctx, o, 4, 18, 12, 14);
@@ -1039,6 +1047,16 @@ export class TextureGenerator {
     ctx.fillRect(6, 6, 1, 1);
     ctx.fillRect(9, 6, 1, 1);
     this.refresh(tm, 'bullet_crimson_bat');
+
+    // Enemy Sniper / Cross Laser Bolt (20x8 glowing crimson dart)
+    ctx = this.createCanvas(tm, 'bullet_enemy_laser', 20, 8);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(0, 1, 20, 6);
+    ctx.fillStyle = '#e11d48';
+    ctx.fillRect(1, 2, 18, 4);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(4, 3, 13, 2);
+    this.refresh(tm, 'bullet_enemy_laser');
 
     // Enemy Frost Orb
     ctx = this.createCanvas(tm, 'bullet_enemy_frost', 14, 14);

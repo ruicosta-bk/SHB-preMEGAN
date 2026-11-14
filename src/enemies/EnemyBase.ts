@@ -251,7 +251,8 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
     }
 
-    if (!this.checkWallCollision(this.sprite.x, this.sprite.y, 18, 18, walls)) {
+    const boxSize = this.getEnemyType() === 'boss_ignis' ? 36 : 18;
+    if (!this.checkWallCollision(this.sprite.x, this.sprite.y, boxSize, boxSize, walls)) {
       return;
     }
 
@@ -259,7 +260,7 @@ export abstract class EnemyBase implements EntityWithStatus {
       [1, 0], [-1, 0], [0, 1], [0, -1],
       [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]
     ];
-    for (let radius = 6; radius <= 48; radius += 6) {
+    for (let radius = 6; radius <= 54; radius += 6) {
       for (const [dx, dy] of dirs) {
         const tx = this.sprite.x + dx * radius;
         const ty = this.sprite.y + dy * radius;
@@ -268,7 +269,7 @@ export abstract class EnemyBase implements EntityWithStatus {
             continue;
           }
         }
-        if (!this.checkWallCollision(tx, ty, 18, 18, walls)) {
+        if (!this.checkWallCollision(tx, ty, boxSize, boxSize, walls)) {
           this.sprite.x = tx;
           this.sprite.y = ty;
           return;

@@ -92,9 +92,11 @@ export class PlayerController {
   private slashSprite: Phaser.GameObjects.Sprite | null = null;
   private slashTimer: number = 0;
 
-  // Held weapon & muzzle flash (360-degree aim)
+  // Held weapon & muzzle flash (360-degree aim + Knight Dual Wield off-hand weapon)
   private weaponSprite: Phaser.GameObjects.Sprite;
+  private offhandWeaponSprite: Phaser.GameObjects.Sprite;
   private muzzleFlashSprite: Phaser.GameObjects.Sprite;
+  private offhandMuzzleFlashSprite: Phaser.GameObjects.Sprite;
   private weaponRecoilOffset: number = 0;
   private muzzleFlashTimer: number = 0;
 
@@ -155,9 +157,14 @@ export class PlayerController {
     // Slash sprite
     this.slashSprite = scene.add.sprite(0, 0, 'slash_arc').setDepth(14).setVisible(false);
 
-    // Held weapon sprite & muzzle flash
+    // Held weapon sprite & muzzle flash (plus hidden offhand copy for Knight Dual-Wield)
     this.weaponSprite = scene.add.sprite(x + 12, y + 3, this.getCurrentWeapon().handTexture).setDepth(12);
+    this.offhandWeaponSprite = scene.add
+      .sprite(x - 10, y - 3, this.getCurrentWeapon().handTexture)
+      .setDepth(11)
+      .setVisible(false);
     this.muzzleFlashSprite = scene.add.sprite(x, y, 'muzzle_flash').setDepth(13).setVisible(false);
+    this.offhandMuzzleFlashSprite = scene.add.sprite(x, y, 'muzzle_flash').setDepth(13).setVisible(false);
 
     // Notify initial state
     events.emit('player:hero-selected', {
@@ -314,6 +321,8 @@ export class PlayerController {
     this.bowChargeGfx?.clear();
     this.frostSlowTimer = 0;
     this.dualWieldTimer = 0;
+    this.offhandWeaponSprite?.setVisible(false);
+    this.offhandMuzzleFlashSprite?.setVisible(false);
     this.isOnIce = false;
     this.glideVx = 0;
     this.glideVy = 0;
@@ -576,23 +585,56 @@ export class PlayerController {
       }
     }
 
-    // Update 360-degree held weapon & recoil spring
+    // Update 360-degree held weapon(s) & recoil spring
     this.weaponRecoilOffset = Phaser.Math.Linear(this.weaponRecoilOffset, 0, Math.min(1, deltaSec * 18));
     const holdRadius = Math.max(4, 12 - this.weaponRecoilOffset);
-    const wx = this.sprite.x + Math.cos(aimAngle) * holdRadius;
-    const wy = this.sprite.y + 3 + Math.sin(aimAngle) * holdRadius;
+    const perpX = -Math.sin(aimAngle);
+    const perpY = Math.cos(aimAngle);
+    const isDualActive = this.dualWieldTimer > 0;
+    const sep = isDualActive ? 7 : 0;
+
+    const wx = this.sprite.x + Math.cos(aimAngle) * holdRadius + perpX * sep;
+    const wy = this.sprite.y + 3 + Math.sin(aimAngle) * holdRadius + perpY * sep;
     this.weaponSprite.setPosition(wx, wy);
     this.weaponSprite.setRotation(aimAngle);
     this.weaponSprite.setFlipY(Math.cos(aimAngle) < 0);
     this.weaponSprite.setVisible(this.sprite.visible);
+    if (isDualActive) {
+      this.weaponSprite.setTint(0xfef08a);
+    } else {
+      this.weaponSprite.clearTint();
+    }
+
+    if (isDualActive) {
+      const owx = this.sprite.x + Math.cos(aimAngle) * (holdRadius - 1) - perpX * sep;
+      const owy = this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius - 1) - perpY * sep;
+      this.offhandWeaponSprite.setPosition(owx, owy);
+      this.offhandWeaponSprite.setRotation(aimAngle);
+      this.offhandWeaponSprite.setFlipY(Math.cos(aimAngle) < 0);
+      this.offhandWeaponSprite.setTint(0xfdba74);
+      this.offhandWeaponSprite.setVisible(this.sprite.visible);
+    } else {
+      this.offhandWeaponSprite.setVisible(false);
+    }
 
     if (this.muzzleFlashTimer > 0) {
       this.muzzleFlashTimer -= deltaSec;
-      const mx = this.sprite.x + Math.cos(aimAngle) * (holdRadius + 13);
-      const my = this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius + 13);
+      const mx = this.sprite.x + Math.cos(aimAngle) * (holdRadius + 13) + perpX * sep;
+      const my = this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius + 13) + perpY * sep;
       this.muzzleFlashSprite.setPosition(mx, my);
+      if (isDualActive) {
+        this.offhandMuzzleFlashSprite.setPosition(
+          this.sprite.x + Math.cos(aimAngle) * (holdRadius + 12) - perpX * sep,
+          this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius + 12) - perpY * sep
+        );
+        this.offhandMuzzleFlashSprite.setRotation(aimAngle);
+        this.offhandMuzzleFlashSprite.setVisible(true);
+      } else {
+        this.offhandMuzzleFlashSprite.setVisible(false);
+      }
       if (this.muzzleFlashTimer <= 0) {
         this.muzzleFlashSprite.setVisible(false);
+        this.offhandMuzzleFlashSprite.setVisible(false);
       }
     }
 
@@ -1243,6 +1285,9 @@ export class PlayerController {
     if (this.weaponSprite) {
       this.weaponSprite.setTexture(cur.handTexture);
     }
+    if (this.offhandWeaponSprite) {
+      this.offhandWeaponSprite.setTexture(cur.handTexture);
+    }
     events.emit('player:weapon-swapped', {
       current: displayWeapon,
       secondary: this.getSecondaryWeapon(),
@@ -1254,7 +1299,9 @@ export class PlayerController {
     this.sprite.destroy();
     this.shadow.destroy();
     if (this.weaponSprite) this.weaponSprite.destroy();
+    if (this.offhandWeaponSprite) this.offhandWeaponSprite.destroy();
     if (this.muzzleFlashSprite) this.muzzleFlashSprite.destroy();
+    if (this.offhandMuzzleFlashSprite) this.offhandMuzzleFlashSprite.destroy();
     if (this.slashSprite) this.slashSprite.destroy();
     if (this.reflectShieldGfx) this.reflectShieldGfx.destroy();
     if (this.bowChargeGfx) this.bowChargeGfx.destroy();

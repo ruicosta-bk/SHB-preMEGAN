@@ -27,6 +27,8 @@ export interface PickupItem {
   data?: any;
   price?: number;
   label?: string;
+  isMagnetized?: boolean;
+  magnetSpeed?: number;
 }
 
 interface HazardTile {
