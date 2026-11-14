@@ -73,13 +73,18 @@ export class PlayerController {
   public heroConfig: HeroConfig;
   private texturePrefix: string;
 
-  // Skill state
+  // Skill state & statue blessing
   public skillCooldownMax: number = 6.0;
   public skillCooldownRemaining: number = 0;
+  public statueBlessing: 'knight' | 'sorcerer' | null = null;
   private guaranteedNextCrit: boolean = false;
   private rogueKillWindowTimer: number = 0;
   private reflectShieldTimer: number = 0;
   private reflectShieldGfx: Phaser.GameObjects.Graphics | null = null;
+  private frostSlowTimer: number = 0;
+  private bowChargeTime: number = 0;
+  private isChargingBow: boolean = false;
+  private bowChargeGfx: Phaser.GameObjects.Graphics | null = null;
 
   // Slash visual representation
   private slashSprite: Phaser.GameObjects.Sprite | null = null;
@@ -221,11 +226,20 @@ export class PlayerController {
       case 'slipstream_dash':
         this.stats.dashCooldown = Math.max(0.6, this.stats.dashCooldown * 0.65);
         break;
+      case 'trap_shield':
+        this.stats.maxHp += 1;
+        this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + 1);
+        break;
       default:
         break;
     }
 
     this.emitStats();
+  }
+
+  public applyFrostSlow(duration: number = 1.2): void {
+    this.frostSlowTimer = Math.max(this.frostSlowTimer, duration);
+    this.sprite.setTint(0x7dd3fc);
   }
 
   public takeDamage(damage: DamageInfo): DamageResult | null {
@@ -242,7 +256,8 @@ export class PlayerController {
       amount: res.actualDamage,
       armorAbsorbed: res.absorbedByArmor,
       hpLoss: res.hpDamage,
-      currentHp: this.stats.hp
+      currentHp: this.stats.hp,
+      armorBroken: res.absorbedByArmor > 0 && this.stats.armor === 0 && this.upgrades.has('shockwave_armor')
     });
 
     this.emitStats();
@@ -289,6 +304,12 @@ export class PlayerController {
     }
     if (this.rogueKillWindowTimer > 0) {
       this.rogueKillWindowTimer -= deltaSec;
+    }
+    if (this.frostSlowTimer > 0) {
+      this.frostSlowTimer -= deltaSec;
+      if (this.frostSlowTimer <= 0 && !this.isDead) {
+        this.sprite.clearTint();
+      }
     }
     if (this.reflectShieldTimer > 0) {
       this.reflectShieldTimer -= deltaSec;
@@ -394,8 +415,9 @@ export class PlayerController {
         this.isDashing = false;
       }
     } else {
-      vx = moveDx * this.stats.speed;
-      vy = moveDy * this.stats.speed;
+      const speedMult = this.frostSlowTimer > 0 ? 0.65 : 1.0;
+      vx = moveDx * this.stats.speed * speedMult;
+      vy = moveDy * this.stats.speed * speedMult;
 
       // Animate walk frames
       if (moveLen > 0) {
@@ -469,9 +491,45 @@ export class PlayerController {
       }
     }
 
-    // Fire weapon while pointer held down
-    if (pointer.isDown && this.shootCooldownRemaining <= 0) {
-      this.performAttack(aimAngle, pool);
+    // Bow charge-and-release or standard continuous fire
+    const curWeapon = this.getCurrentWeapon();
+    if (curWeapon.category === 'bow') {
+      const chargeMax = curWeapon.chargeTime || 0.75;
+      if (pointer.isDown && this.shootCooldownRemaining <= 0) {
+        this.isChargingBow = true;
+        this.bowChargeTime = Math.min(chargeMax, this.bowChargeTime + deltaSec);
+        if (!this.bowChargeGfx) {
+          this.bowChargeGfx = this.scene.add.graphics().setDepth(14);
+        }
+        const ratio = this.bowChargeTime / chargeMax;
+        this.bowChargeGfx.clear();
+        this.bowChargeGfx.lineStyle(2.5, ratio >= 0.85 ? 0xfacc15 : 0x22d3ee, 0.9);
+        this.bowChargeGfx.beginPath();
+        this.bowChargeGfx.arc(
+          this.sprite.x,
+          this.sprite.y,
+          18,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * ratio,
+          false
+        );
+        this.bowChargeGfx.strokePath();
+      } else if (this.isChargingBow && !pointer.isDown) {
+        const chargeRatio = Math.max(0.35, Math.min(1, this.bowChargeTime / chargeMax));
+        this.isChargingBow = false;
+        this.bowChargeTime = 0;
+        if (this.bowChargeGfx) this.bowChargeGfx.clear();
+        this.fireBowArrow(aimAngle, pool, chargeRatio);
+      }
+    } else {
+      if (this.isChargingBow) {
+        this.isChargingBow = false;
+        this.bowChargeTime = 0;
+        if (this.bowChargeGfx) this.bowChargeGfx.clear();
+      }
+      if (pointer.isDown && this.shootCooldownRemaining <= 0) {
+        this.performAttack(aimAngle, pool, [...wallColliders, ...doorColliders]);
+      }
     }
   }
 
@@ -500,7 +558,11 @@ export class PlayerController {
     return false;
   }
 
-  private performAttack(aimAngle: number, pool: ProjectilePool): void {
+  private performAttack(
+    aimAngle: number,
+    pool: ProjectilePool,
+    solidColliders: { x: number; y: number; width: number; height: number }[] = []
+  ): void {
     const weapon = this.getCurrentWeapon();
 
     // Check energy cost
@@ -520,6 +582,12 @@ export class PlayerController {
     const damageMultiplier = isCrit ? 2.0 : 1.0;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
     const extraBounce = this.upgrades.has('ricochet') ? 1 : 0;
+
+    // Continuous Beam Laser attack
+    if (weapon.category === 'beam') {
+      this.fireLaserBeam(aimAngle, weapon.damage * damageMultiplier, weapon.range, isCrit, solidColliders);
+      return;
+    }
 
     // Melee Blade attack
     if (weapon.category === 'melee') {
@@ -595,14 +663,16 @@ export class PlayerController {
         break;
     }
 
-    // Spawn pellets
+    // Spawn pellets (shotgun_plus grants +2 extra pellets for multi-projectile weapons)
     const baseDamage = weapon.damage * damageMultiplier;
+    const extraPellets = weapon.pellets > 1 && this.upgrades.has('shotgun_plus') ? 2 : 0;
+    const totalPellets = weapon.pellets + extraPellets;
     const spreadRad = Phaser.Math.DegToRad(weapon.spreadAngle);
 
-    for (let i = 0; i < weapon.pellets; i++) {
+    for (let i = 0; i < totalPellets; i++) {
       let angleOffset = 0;
-      if (weapon.pellets > 1) {
-        angleOffset = (i / (weapon.pellets - 1) - 0.5) * spreadRad;
+      if (totalPellets > 1) {
+        angleOffset = (i / (totalPellets - 1) - 0.5) * spreadRad;
       } else if (weapon.spreadAngle > 0) {
         angleOffset = (Math.random() - 0.5) * spreadRad;
       }
@@ -620,6 +690,8 @@ export class PlayerController {
         damage: baseDamage,
         isPlayer: true,
         isCrit,
+        isHoming: !!weapon.isHoming,
+        element: weapon.id === 'staff' ? 'fire' : undefined,
         texture: weapon.bulletTexture,
         range: weapon.range,
         pierceCount: weapon.pierceCount + extraPierce,
@@ -627,6 +699,106 @@ export class PlayerController {
         tint: isCrit ? 0xff0055 : undefined
       });
     }
+  }
+
+  private fireBowArrow(aimAngle: number, pool: ProjectilePool, chargeRatio: number): void {
+    const weapon = WEAPONS.bow;
+    if (weapon.energyCost > 0) {
+      if (!DamageCalculator.consumeEnergy(this.stats, weapon.energyCost)) {
+        return;
+      }
+      this.emitStats();
+    }
+    this.shootCooldownRemaining = 0.18;
+    const isCrit =
+      chargeRatio >= 0.85 ||
+      this.guaranteedNextCrit ||
+      (this.upgrades.has('critical_focus') && Math.random() < 0.25);
+    this.guaranteedNextCrit = false;
+    const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
+
+    this.weaponRecoilOffset = 5;
+    audio.playShootPenetrator();
+
+    pool.spawn({
+      x: this.sprite.x + Math.cos(aimAngle) * 18,
+      y: this.sprite.y + Math.sin(aimAngle) * 18,
+      angleRad: aimAngle,
+      speed: weapon.bulletSpeed * (0.65 + 0.45 * chargeRatio),
+      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0))),
+      isPlayer: true,
+      isCrit,
+      texture: weapon.bulletTexture,
+      range: weapon.range,
+      pierceCount: (chargeRatio >= 0.75 ? weapon.pierceCount : 1) + extraPierce,
+      bounceCount: this.upgrades.has('ricochet') ? 1 : 0,
+      tint: isCrit ? 0xfacc15 : undefined
+    });
+  }
+
+  private fireLaserBeam(
+    aimAngle: number,
+    damage: number,
+    maxRange: number,
+    isCrit: boolean,
+    solidColliders: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    this.weaponRecoilOffset = 2;
+    audio.playShootPenetrator();
+
+    const startX = this.sprite.x + Math.cos(aimAngle) * 16;
+    const startY = this.sprite.y + Math.sin(aimAngle) * 16;
+    let endX = startX + Math.cos(aimAngle) * maxRange;
+    let endY = startY + Math.sin(aimAngle) * maxRange;
+
+    // Step raycast against wall/prop colliders in 12px increments
+    const cos = Math.cos(aimAngle);
+    const sin = Math.sin(aimAngle);
+    for (let dist = 12; dist <= maxRange; dist += 12) {
+      const rx = startX + cos * dist;
+      const ry = startY + sin * dist;
+      let hitWall = false;
+      for (const w of solidColliders) {
+        if (rx >= w.x && rx <= w.x + w.width && ry >= w.y && ry <= w.y + w.height) {
+          hitWall = true;
+          break;
+        }
+      }
+      if (hitWall) {
+        endX = rx;
+        endY = ry;
+        break;
+      }
+    }
+
+    const beamGfx = this.scene.add.graphics().setDepth(17);
+    beamGfx.lineStyle(isCrit ? 8 : 6, 0xf43f5e, 0.75);
+    beamGfx.beginPath();
+    beamGfx.moveTo(startX, startY);
+    beamGfx.lineTo(endX, endY);
+    beamGfx.strokePath();
+
+    beamGfx.lineStyle(2.5, 0xffffff, 1.0);
+    beamGfx.beginPath();
+    beamGfx.moveTo(startX, startY);
+    beamGfx.lineTo(endX, endY);
+    beamGfx.strokePath();
+
+    this.scene.tweens.add({
+      targets: beamGfx,
+      alpha: 0,
+      duration: 110,
+      onComplete: () => beamGfx.destroy()
+    });
+
+    events.emit('player:laser-beam', {
+      x1: startX,
+      y1: startY,
+      x2: endX,
+      y2: endY,
+      damage,
+      isCrit
+    });
   }
 
   public isReflectShieldActive(): boolean {
@@ -638,6 +810,9 @@ export class PlayerController {
       this.skillCooldownRemaining = 0;
       this.rogueKillWindowTimer = 0;
       events.emit('player:skill-cooldown', { progress: 1, isReady: true });
+    }
+    if (this.upgrades.has('vampire_bite') && this.stats.hp < this.stats.maxHp && Math.random() < 0.2) {
+      this.heal(1, 0);
     }
   }
 
@@ -653,6 +828,46 @@ export class PlayerController {
       this.useVanguardReflectShield();
     } else {
       this.useAlchemicalFlask(pointer, pool);
+    }
+    this.triggerStatueBlessing(pointer, pool);
+  }
+
+  private triggerStatueBlessing(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
+    if (!this.statueBlessing) return;
+
+    if (this.statueBlessing === 'knight') {
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        pool.spawn({
+          x: this.sprite.x + Math.cos(ang) * 14,
+          y: this.sprite.y + Math.sin(ang) * 14,
+          angleRad: ang,
+          speed: 420,
+          damage: 6,
+          isPlayer: true,
+          isCrit: false,
+          texture: 'bullet_player_pistol',
+          range: 340,
+          tint: 0xfacc15
+        });
+      }
+    } else if (this.statueBlessing === 'sorcerer') {
+      const baseAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+      for (const offset of [-0.35, 0, 0.35]) {
+        pool.spawn({
+          x: this.sprite.x + Math.cos(baseAngle + offset) * 14,
+          y: this.sprite.y + Math.sin(baseAngle + offset) * 14,
+          angleRad: baseAngle + offset,
+          speed: 300,
+          damage: 8,
+          isPlayer: true,
+          isCrit: true,
+          isHoming: true,
+          element: 'fire',
+          texture: 'bullet_fireball',
+          range: 520
+        });
+      }
     }
   }
 
@@ -807,5 +1022,6 @@ export class PlayerController {
     if (this.muzzleFlashSprite) this.muzzleFlashSprite.destroy();
     if (this.slashSprite) this.slashSprite.destroy();
     if (this.reflectShieldGfx) this.reflectShieldGfx.destroy();
+    if (this.bowChargeGfx) this.bowChargeGfx.destroy();
   }
 }

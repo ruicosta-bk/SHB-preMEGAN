@@ -27,67 +27,73 @@ Máy chủ phát triển cục bộ đang chạy trực tiếp tại:
 
 ---
 
-## ⚡ Các Tính Năng Đậm Chất Soul Knight Vừa Được Bổ Sung
+## ⚡ Các Tính Năng Đậm Chất Soul Knight (Milestone 1 - 3)
 
-1. **Tuyệt Kỹ Phím [F] / Chuột Phải - Bình Hỏa Giả Kim**:
-   - Nhân vật có chiêu thức chủ động (Active Hero Skill).
-   - Ném bình thuốc nổ bay theo vòng cung tới vị trí con trỏ chuột, phá hủy mọi đạn địch trong bán kính nổ, giải vây tức thì khi bị dồn vào góc tường.
-2. **Thùng Thuốc Nổ Đỏ & Chum Độc Xanh Môi Trường (Interactive Props)**:
-   - Xuất hiện trong các phòng chiến đấu làm vật cản đạn (cover) giúp người chơi né tránh làn đạn của xạ thủ.
-   - Bị bắn trúng sẽ phát nổ và tạo phản ứng nổ dây chuyền (chain reaction), tiêu diệt hoặc làm chậm/đóng băng quái vật xung quanh.
-3. **Kinh Tế Tiền Vàng (Coins) & Cửa Hàng Thương Gia Giả Kim (Shop)**:
-   - Quái vật chết rơi ra các đồng tiền vàng lấp lánh có từ tính tự hút về người chơi.
-   - Tại Phòng Nghỉ (Phòng 6) trước Boss: Xuất hiện Thương Gia Giả Kim áo choàng tím bí ẩn bày bán Bình Huyết Thạch Lớn (+4 HP), Bình Linh Lực Lớn (+100 NL), và Vũ Khí Hiếm.
-4. **Hiệu Ứng Sấm Sét Dây Chuyền (Chain Lightning) & Chí Mạng**:
-   - Khi súng Lôi Kích bắn trúng hoặc người chơi gây đòn Chí Mạng (Critical Hit), tia sét xanh phóng sang 2 quái lân cận kèm âm thanh điện giật sống động.
-   - Cảm giác va chạm lực mạnh (Screen shake & Hit feedback) tương đương trải nghiệm Soul Knight nguyên bản.
+1. **Bản Đồ Hầm Ngục Liền Mạch & Hành Lang Kết Nối (Seamless Dungeon)**:
+   - 8 phòng phân nhánh kết nối trực tiếp qua **hành lang 3 ô** liền mạch (không còn fade chuyển cảnh tách rời), kèm sương mù Fog of War tự tan khi bước vào phòng mới, đuốc lửa bập bùng, bẫy chông sàn theo chu kỳ, và hòm gỗ vỡ rơi loot.
+2. **3 Lớp Anh Hùng & Bạn Đồng Hành Golem Cơ Khí**:
+   - **Nhà Giả Kim**: Súng Lục Đồng Cổ, `[F]` Bình Hỏa Giả Kim nổ diện rộng 80px xóa đạn địch & thiêu đốt.
+   - **Thích Khách Bóng Đêm**: Đoản Kiếm, `[F]` Ảnh Trảm Đoạt Mệnh lướt chém bất tử, đòn kế 100% Chí Mạng, hạ địch hồi chiêu ngay.
+   - **Hộ Vệ Thiết Giáp**: Hỏa Pháo Tán Xạ, `[F]` Khiên Phản Xạ 3 giây chặn & bật ngược đạn địch thành đạn vàng chí mạng.
+   - **Golem Cơ Khí (Pet)**: Theo sát người chơi, tự bắn tia hỗ trợ, hút tiền vàng từ xa (<180px) và chặn 1 viên đạn địch mỗi 6 giây.
+3. **8 Loại Vũ Khí Đặc Sắc & Tượng Thần Cổ Xưa**:
+   - Bổ sung **Cung Tinh Thể Cổ** (giữ chuột gồng lực bắn tên xuyên), **Súng Tia Hợp Hạch** (Laser raycast liên tục), và **Trượng Hỏa Cầu** (3 cầu lửa bám đuổi + Thiêu Đốt), hiển thị xoay 360° trên tay nhân vật kèm độ giật & chớp nòng.
+   - **Tượng Thần Cổ Xưa** (12 Vàng tại Phòng Kho Báu): Ban Phước Lành Kỵ Sĩ (tỏa 8 tia vàng khi `[F]`) hoặc Pháp Sư (3 tên lửa đuổi khi `[F]`).
+   - Tiêu diệt Boss **Ignis Ignifer** mở ra **Cổng Dịch Chuyển (Boss Portal)** giữa phòng để bước vào hoàn tất màn chơi.
+4. **Kinh Tế, Môi Trường & Quái Vật Đa Dạng**:
+   - Quái Tinh Anh (**Elite**) kích thước lớn, máu x2.2, hào quang tím; **Pháp Sư Băng Giá (Frost Mage)** bắn tia băng làm chậm 35%; Thùng Thuốc Nổ Đỏ & Chum Độc Xanh nổ dây chuyền; Cửa Hàng Thương Gia Giả Kim.
 
 ---
 
 ## 💎 Cơ Chế Sinh Tồn & Ba Tài Nguyên
 
-1. **HP (Máu đỏ - 6 vạch)**: Không tự hồi. Chỉ phục hồi khi nhặt Bình Máu Giả Kim rơi từ quái hoặc suối phục hồi trong phòng nghỉ / rương.
-2. **Giáp (Giáp xanh - 5 vạch)**: Luôn nhận sát thương trước HP. Nếu sát thương vượt quá số giáp hiện có, phần dư sẽ trừ trực tiếp vào HP. Giáp **bắt đầu tự hồi phục sau 3 giây** liên tục không phải nhận sát thương.
-3. **Năng lượng (Ngọc xanh - 180 điểm)**: Tiêu hao khi sử dụng các loại vũ khí hạng nặng. Tiêu diệt quái vật hoặc đập vỡ tinh thể sẽ rơi ra mảnh năng lượng để nạp lại.
-4. **Cơ chế chống Softlock**: Súng Lục Khởi Đầu tiêu tốn **0 Năng lượng**, đảm bảo người chơi không bao giờ bị kẹt hoặc mất khả năng tấn công khi cạn kiệt năng lượng.
-5. **Miễn nhiễm sau đòn đánh (0.8s I-frame)**: Sau khi nhận sát thương, người chơi có 0.8 giây nhấp nháy bất tử nhằm ngăn chặn việc bị dồn sát thương tức tử do nhiều viên đạn va chạm cùng một khung hình.
+1. **HP (Máu đỏ)**: Không tự hồi. Phục hồi qua Bình Máu, Tượng Thần, hoặc nâng cấp Hút Máu Ma Cà Rồng.
+2. **Giáp (Giáp xanh)**: Luôn nhận sát thương trước HP và tự hồi phục sau 3 giây (2.2s với Phiến Giáp Hợp Kim).
+3. **Năng lượng (Ngọc xanh)**: Tiêu hao khi dùng vũ khí hạng nặng. Súng lục & Đoản kiếm tiêu tốn **0 NL** chống softlock.
+4. **Miễn nhiễm sau đòn đánh (0.8s I-frame)**: Ngăn dồn sát thương tức tử trong cùng khung hình.
 
 ---
 
-## 🔫 5 Loại Vũ Khí Độc Lập
+## 🔫 8 Loại Vũ Khí Độc Lập
 
-1. **Súng Lục Đồng Cổ (Pistol)**: Bắn đơn chính xác cao, sát thương 3, tiêu hao 0 NL, tầm bắn 650px. Luôn nằm ở ô vũ khí đầu tiên.
-2. **Hỏa Pháo Tán Xạ (Shotgun)**: Bắn chùm 5 mảnh đạn tỏa góc 26°, sát thương 3 × 5 = 15 cực mạnh khi áp sát, tiêu hao 3 NL, tầm bắn hiệu quả 340px.
-3. **Liên Thanh Tinh Thể (Repeater)**: Tốc độ xả đạn cực cao (8.5 phát/giây), sát thương 2, tiêu hao 1 NL mỗi phát, độ tản 9°, uy lực áp chế đám đông.
-4. **Lôi Kích Xuyên Giáp (Penetrator)**: Chùm năng lượng plasma tím tốc độ 680 px/s, sát thương 9, tiêu hao 4 NL, **xuyên qua tối đa 3 kẻ địch** liên tiếp.
-5. **Hư Không Đoản Kiếm (Blade)**: Chém quét hình vòng cung 120°, sát thương 8, tiêu hao 0 NL. **Đặc biệt: Phá hủy toàn bộ đạn địch thông thường nằm trong vùng quét kiếm** kèm hiệu ứng phản đòn âm thanh leng keng.
+1. **Súng Lục Đồng Cổ (Pistol)**: Bắn đơn chính xác cao, 0 NL.
+2. **Hỏa Pháo Tán Xạ (Shotgun)**: Bắn chùm 5 mảnh đạn tỏa góc 26°, 3 NL.
+3. **Liên Thanh Tinh Thể (Repeater)**: Tốc độ 8.5 phát/giây, 1 NL/phát.
+4. **Lôi Kích Xuyên Giáp (Penetrator)**: Chùm plasma xuyên tối đa 3 kẻ địch, 4 NL.
+5. **Hư Không Đoản Kiếm (Blade)**: Chém cung 120°, phá đạn địch trong tầm, 0 NL.
+6. **Cung Tinh Thể Cổ (Crystal Bow)**: Giữ chuột gồng lực tới 0.75s, thả ra bắn tên xuyên 4 mục tiêu & chí mạng cao, 3 NL.
+7. **Súng Tia Hợp Hạch (Fusion Laser)**: Chiếu chùm tia Laser liên tục xuyên thẳng mọi kẻ thù trên đường ngắm, 2 NL.
+8. **Trượng Hỏa Cầu (Ember Staff)**: Bắn 3 cầu lửa tự động bám đuổi kẻ địch & gây Thiêu Đốt, 4 NL.
 
 ---
 
-## 🧪 8 Nâng Cấp Giả Kim (Chọn 1 trong 3)
+## 🧪 12 Nâng Cấp Giả Kim (Chọn 1 trong 3)
 
 | Nâng cấp | Thể loại | Tác dụng chi tiết |
 | :--- | :--- | :--- |
-| **Phiến Giáp Hợp Kim** | Sinh tồn | +2 Giáp tối đa. Giảm thời gian chờ hồi giáp từ 3.0s xuống 2.2s. |
-| **Tàn Lửa Sinh Mệnh** | Sinh tồn | +3 HP tối đa và lập tức hồi phục 2 HP. |
-| **Tụ Điện Giả Kim** | Tiện ích | +60 Năng lượng tối đa và tăng 50% tỉ lệ rơi ngọc năng lượng từ quái vật. |
-| **Đầu Đạn Xuyên Thấu** | Tấn công | Tất cả các loại súng được tăng thêm +1 lần xuyên mục tiêu. |
-| **Đạn Phản Xạ Động Năng**| Tấn công | Đạn súng bật nảy từ tường 1 lần, duy trì 80% sát thương ban đầu. |
-| **Bậc Thầy Kiếm Đạo** | Tấn công | Góc chém mở rộng lên 170°, tầm chém +25%, +3 sát thương kiếm và hồi 1 NL cho mỗi đạn địch phá hủy được. |
-| **Lướt Lửa Quá Tải** | Tiện ích | Hồi chiêu Lướt giảm 35% (còn 0.97s), để lại vệt lửa gây 3 sát thương cho quái chạm phải. |
-| **Khai Nhãn Chí Mạng** | Tấn công | 25% cơ hội nhân đôi sát thương (Critical Hit) kèm đẩy lùi cực mạnh. |
+| **Phiến Giáp Hợp Kim** | Sinh tồn | +2 Giáp tối đa. Thời gian chờ hồi giáp giảm còn 2.2s. |
+| **Tàn Lửa Sinh Mệnh** | Sinh tồn | +3 HP tối đa và lập tức hồi 2 HP. |
+| **Tụ Điện Giả Kim** | Tiện ích | +60 Năng lượng tối đa và +50% tỉ lệ rơi ngọc năng lượng. |
+| **Đầu Đạn Xuyên Thấu** | Tấn công | Tăng +1 lần xuyên mục tiêu cho vũ khí bắn đạn. |
+| **Đạn Phản Xạ Động Năng** | Tấn công | Đạn bật nảy tường 1 lần với 80% sát thương. |
+| **Bậc Thầy Kiếm Đạo** | Tấn công | Góc chém 170°, tầm +25%, +3 sát thương & hồi 1 NL mỗi đạn phá. |
+| **Lướt Lửa Quá Tải** | Tiện ích | Giảm 35% hồi chiêu Lướt Space. |
+| **Khai Nhãn Chí Mạng** | Tấn công | 25% cơ hội nhân đôi sát thương & đẩy lùi cực mạnh. |
+| **Hút Máu Ma Cà Rồng** | Sinh tồn | 20% tỉ lệ hồi +1 HP khi tiêu diệt kẻ địch. |
+| **Khiên Kháng Bẫy & Gai** | Tiện ích | Miễn nhiễm bẫy chông sàn & +1 HP tối đa. |
+| **Đạn Chùm Tỏa Rộng** | Tấn công | Vũ khí bắn nhiều tia tăng thêm +2 viên đạn mỗi phát. |
+| **Sóng Xung Kích Phá Giáp** | Sinh tồn | Khi giáp vỡ, nổ 90px quét sạch đạn địch & thiêu đốt quanh người. |
 
 ---
 
 ## 👹 Kẻ Địch & Đại Boss Ignis Ignifer
 
-- **Homunculus Cận Chiến (Grunt)**: Di chuyển áp sát người chơi, phát sáng cảnh báo đỏ-trắng 0.35s trước khi tung đòn cào 2 sát thương.
-- **Xạ Thủ Bắn Tỉa (Shooter)**: Duy trì cự ly 200-300px, chiếu tia laser đỏ cảnh báo hướng ngắm trong 0.65s, sau đó bắn phi tiêu tốc độ cao.
-- **Pháp Sư Tỏa Đạn (Fan Caster)**: Bắn loạt 5 viên đạn hình quạt có khe hở né đạn rộng ở giữa, gây 1 sát thương mỗi viên.
-- **Thiết Ngưu Húc (Charger)**: Cảnh báo quỹ đạo đường húc màu cam trong 0.55s, sau đó lao vọt tới với tốc độ 420 px/s gây 3 sát thương; va chạm tường sẽ choáng 1.2s để người chơi phản công.
-- **Đại Pháp Sư Ignis Ignifer (Boss 2 Giai Đoạn)**:
-  - **Giai đoạn 1 (150 HP)**: Tung bão lửa hướng tâm có 2 khoảng trống thoát hiểm; chuỗi đạn xoắn ốc 16 viên quay theo chiều kim đồng hồ; nhảy đập dậm chấn động với vòng đỏ cảnh báo trước.
-  - **Giai đoạn 2 (120 HP)**: Thức tỉnh ngọn lửa đỏ thẫm; bắn chuỗi đạn xoắn ốc kép ngược chiều; đạn lửa dung nham lớn và các đòn dậm liên hoàn; có quãng nghỉ lấy hơi 1.4s giữa các đòn đánh.
+- **Homunculus Cận Chiến (Grunt)**: Áp sát và cảnh báo đỏ-trắng trước khi tấn công.
+- **Xạ Thủ Bắn Tỉa (Shooter) & Pháp Sư Băng Giá (Frost Mage)**: Ngắm tia cảnh báo trước khi bắn laser hoặc tia băng làm chậm 35%.
+- **Pháp Sư Tỏa Đạn (Fan Caster)**: Bắn loạt 5 đạn hình quạt.
+- **Thiết Ngưu Húc (Charger)**: Húc tốc độ cao 420 px/s, đâm tường choáng 1.2s.
+- **Biến Thể Tinh Anh (Elite)**: Hào quang tím, +25% kích thước, x2.2 máu & rơi nhiều vàng hơn.
+- **Đại Pháp Sư Ignis Ignifer (Boss 2 Giai Đoạn)**: Đánh bại để mở Cổng Dịch Chuyển thoát hầm ngục.
 
 ---
 
@@ -149,7 +155,7 @@ soul-knight-2d/
 
 ## 🧪 Kiểm Thử Tự Động (Unit Testing)
 
-Chạy toàn bộ 20 bài kiểm thử đơn vị:
+Chạy toàn bộ 30 bài kiểm thử đơn vị:
 
 ```bash
 npm test
@@ -157,14 +163,17 @@ npm test
 
 Kết quả:
 ```text
+ ✓ tests/weapon.test.ts (7 tests)
  ✓ tests/run_cycle.test.ts (2 tests)
  ✓ tests/damage.test.ts (6 tests)
+ ✓ tests/dungeon.test.ts (5 tests)
+ ✓ tests/status.test.ts (3 tests)
  ✓ tests/upgrades.test.ts (2 tests)
- ✓ tests/weapon.test.ts (6 tests)
- ✓ tests/dungeon.test.ts (4 tests)
+ ✓ tests/economy_and_props.test.ts (3 tests)
+ ✓ tests/heroes.test.ts (2 tests)
 
- Test Files  5 passed (5)
-      Tests  20 passed (20)
+ Test Files  8 passed (8)
+      Tests  30 passed (30)
 ```
 
 ## 🏗️ Lệnh Biên Dịch & Chạy

@@ -203,6 +203,55 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
+    events.on('player:laser-beam', (data: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      damage: number;
+      isCrit: boolean;
+    }) => {
+      if (!this.roomManager) return;
+      for (const enemy of this.roomManager.activeEnemies) {
+        if (enemy.isDead) continue;
+        const d = this.pointToSegmentDist(enemy.sprite.x, enemy.sprite.y, data.x1, data.y1, data.x2, data.y2);
+        if (d <= 20) {
+          enemy.takeDamage({
+            amount: data.damage,
+            isCrit: data.isCrit,
+            isPlayerAttack: true
+          });
+        }
+      }
+      if (this.roomManager.interactiveProps) {
+        for (const prop of this.roomManager.interactiveProps.props) {
+          if (prop.isDestroyed) continue;
+          const d = this.pointToSegmentDist(prop.x, prop.y, data.x1, data.y1, data.x2, data.y2);
+          if (d <= 18) {
+            this.roomManager.interactiveProps.damageProp(
+              prop,
+              { amount: data.damage, isCrit: data.isCrit, isPlayerAttack: true },
+              this.projectilePool,
+              this.roomManager.activeEnemies,
+              (cx, cy) => this.spawnCrateLoot(cx, cy)
+            );
+          }
+        }
+      }
+    });
+
+    events.on('player:damaged', (data: { armorBroken?: boolean }) => {
+      if (data?.armorBroken && this.player) {
+        const px = this.player.sprite.x;
+        const py = this.player.sprite.y;
+        this.projectilePool.destroyEnemyBulletsInRadius(px, py, 95);
+        audio.playExplosion();
+        const ring = this.add.circle(px, py, 90, 0x38bdf8, 0.35).setDepth(19);
+        this.tweens.add({ targets: ring, alpha: 0, scale: 1.25, duration: 280, onComplete: () => ring.destroy() });
+        events.emit('combat:explosion', { x: px, y: py, radius: 90, damage: 12 });
+      }
+    });
+
     events.on('player:died', () => {
       this.handleGameOver(false);
     });
@@ -327,8 +376,11 @@ export class MainScene extends Phaser.Scene {
       this.roomManager.doorColliders
     );
 
-    // 1b. Floor Spike Trap Damage
-    if (this.roomManager.isPlayerOnActiveTrap(this.player.sprite.x, this.player.sprite.y)) {
+    // 1b. Floor Spike Trap Damage (unless trap_shield upgrade is active)
+    if (
+      !this.player.upgrades.has('trap_shield') &&
+      this.roomManager.isPlayerOnActiveTrap(this.player.sprite.x, this.player.sprite.y)
+    ) {
       const trapHit = this.player.takeDamage({ amount: 1, isPlayerAttack: false });
       if (trapHit !== null) {
         this.cameras.main.shake(120, 0.007);
@@ -369,8 +421,12 @@ export class MainScene extends Phaser.Scene {
       );
     }
 
-    // 4. Update Projectiles
-    this.projectilePool.update(deltaSec, [...allWallsAndProps, ...this.roomManager.doorColliders]);
+    // 4. Update Projectiles (with active enemies for homing staff/sorcerer missiles)
+    this.projectilePool.update(
+      deltaSec,
+      [...allWallsAndProps, ...this.roomManager.doorColliders],
+      this.roomManager.activeEnemies
+    );
 
     // 5. Check Projectile Collisions
     this.checkProjectileHits();
@@ -421,6 +477,10 @@ export class MainScene extends Phaser.Scene {
               },
               isPlayerAttack: true
             });
+
+            if (p.element === 'fire') {
+              StatusManager.applyStatus(enemy as any, 'burn', 2.5, 2, 0.5);
+            }
 
             // Soul Knight tactile feel: Crit screen shake & Chain Lightning shock
             if (p.isCrit) {
@@ -490,6 +550,9 @@ export class MainScene extends Phaser.Scene {
           });
 
           if (hitRes !== null) {
+            if (p.element === 'frost') {
+              this.player.applyFrostSlow(1.2);
+            }
             this.cameras.main.shake(150, 0.008);
             this.projectilePool.deactivate(p);
           }
@@ -700,6 +763,15 @@ export class MainScene extends Phaser.Scene {
         this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
       }
     }
+  }
+
+  private pointToSegmentDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
   }
 
   private removePickup(pickup: PickupItem): void {

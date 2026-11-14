@@ -359,10 +359,7 @@ export class RoomManager {
       if (sp.type === 'grunt') {
         enemy = new EnemyGrunt(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'shooter' || sp.type === 'frost_mage') {
-        enemy = new EnemyShooter(this.scene, worldPosX, worldPosY);
-        if (sp.type === 'frost_mage') {
-          enemy.sprite.setTexture('enemy_frost_mage');
-        }
+        enemy = new EnemyShooter(this.scene, worldPosX, worldPosY, sp.type === 'frost_mage' ? 'frost_mage' : 'shooter');
       } else if (sp.type === 'fan_caster') {
         enemy = new EnemyFanCaster(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'charger') {

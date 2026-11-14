@@ -6,7 +6,11 @@ export type UpgradeId =
   | 'ricochet'
   | 'blade_mastery'
   | 'slipstream_dash'
-  | 'critical_focus';
+  | 'critical_focus'
+  | 'vampire_bite'
+  | 'trap_shield'
+  | 'shotgun_plus'
+  | 'shockwave_armor';
 
 export interface UpgradeData {
   id: UpgradeId;

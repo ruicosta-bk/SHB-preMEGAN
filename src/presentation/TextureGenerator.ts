@@ -965,5 +965,29 @@ export class TextureGenerator {
       ctx.fillRect(15, 4, 2, 24);
       ctx.fillRect(4, 15, 24, 2);
     });
+    drawSimpleIcon('upg_vampire', '#450a0a', '#e11d48', ctx => {
+      ctx.beginPath();
+      ctx.moveTo(10, 8); ctx.lineTo(14, 24); ctx.lineTo(16, 14);
+      ctx.lineTo(18, 24); ctx.lineTo(22, 8);
+      ctx.closePath(); ctx.fill();
+    });
+    drawSimpleIcon('upg_trap', '#064e3b', '#34d399', ctx => {
+      ctx.fillRect(8, 20, 16, 4);
+      ctx.beginPath();
+      ctx.moveTo(9, 20); ctx.lineTo(12, 9); ctx.lineTo(15, 20);
+      ctx.moveTo(17, 20); ctx.lineTo(20, 9); ctx.lineTo(23, 20);
+      ctx.fill();
+    });
+    drawSimpleIcon('upg_shotgun', '#422006', '#fbbf24', ctx => {
+      ctx.fillRect(6, 14, 7, 4);
+      ctx.fillRect(16, 8, 9, 3);
+      ctx.fillRect(16, 14, 10, 3);
+      ctx.fillRect(16, 20, 9, 3);
+    });
+    drawSimpleIcon('upg_shockwave', '#1e1b4b', '#60a5fa', ctx => {
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(16, 16, 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(16, 16, 5, 0, Math.PI * 2); ctx.fill();
+    });
   }
 }

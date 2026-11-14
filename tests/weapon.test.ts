@@ -36,4 +36,20 @@ describe('Weapon System Unit Tests', () => {
     expect(WEAPONS.blade.spreadAngle).toBeGreaterThanOrEqual(120);
     expect(WEAPONS.blade.range).toBeLessThan(100);
   });
+
+  it('configures bow, laser beam, and homing staff with hand textures', () => {
+    expect(WEAPONS.bow.category).toBe('bow');
+    expect(WEAPONS.bow.chargeTime).toBeGreaterThan(0);
+    expect(WEAPONS.bow.pierceCount).toBeGreaterThanOrEqual(3);
+
+    expect(WEAPONS.laser.category).toBe('beam');
+    expect(WEAPONS.laser.pierceCount).toBeGreaterThan(100);
+
+    expect(WEAPONS.staff.isHoming).toBe(true);
+    expect(WEAPONS.staff.pellets).toBe(3);
+
+    for (const w of Object.values(WEAPONS)) {
+      expect(w.handTexture.startsWith('hand_')).toBe(true);
+    }
+  });
 });

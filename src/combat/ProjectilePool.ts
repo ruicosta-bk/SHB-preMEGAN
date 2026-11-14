@@ -10,6 +10,8 @@ export interface Projectile {
   damage: number;
   isPlayer: boolean;
   isCrit: boolean;
+  isHoming: boolean;
+  element?: 'fire' | 'frost';
   pierceRemaining: number;
   bouncesRemaining: number;
   rangeRemaining: number;
@@ -33,6 +35,8 @@ export class ProjectilePool {
     damage: number;
     isPlayer: boolean;
     isCrit?: boolean;
+    isHoming?: boolean;
+    element?: 'fire' | 'frost';
     texture: string;
     range: number;
     pierceCount?: number;
@@ -55,6 +59,8 @@ export class ProjectilePool {
         damage: 0,
         isPlayer: false,
         isCrit: false,
+        isHoming: false,
+        element: undefined,
         pierceRemaining: 0,
         bouncesRemaining: 0,
         rangeRemaining: 0,
@@ -79,6 +85,8 @@ export class ProjectilePool {
     p.damage = config.damage;
     p.isPlayer = config.isPlayer;
     p.isCrit = !!config.isCrit;
+    p.isHoming = !!config.isHoming;
+    p.element = config.element;
     p.pierceRemaining = config.pierceCount || 0;
     p.bouncesRemaining = config.bounceCount || 0;
     p.rangeRemaining = config.range;
@@ -89,11 +97,36 @@ export class ProjectilePool {
 
   public update(
     deltaSec: number,
-    wallColliders: { x: number; y: number; width: number; height: number }[]
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    activeEnemies?: { sprite: { x: number; y: number }; isDead: boolean }[]
   ): void {
     for (let i = 0; i < this.projectiles.length; i++) {
       const p = this.projectiles[i];
       if (!p.active) continue;
+
+      if (p.isPlayer && p.isHoming && activeEnemies && activeEnemies.length > 0) {
+        let bestTarget: { sprite: { x: number; y: number } } | null = null;
+        let bestDist = 280;
+        for (const e of activeEnemies) {
+          if (e.isDead) continue;
+          const d = Math.hypot(e.sprite.x - p.sprite.x, e.sprite.y - p.sprite.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestTarget = e;
+          }
+        }
+        if (bestTarget) {
+          const speed = Math.hypot(p.vx, p.vy) || 300;
+          const currentAngle = Math.atan2(p.vy, p.vx);
+          const targetAngle = Math.atan2(bestTarget.sprite.y - p.sprite.y, bestTarget.sprite.x - p.sprite.x);
+          const diff = Phaser.Math.Angle.Wrap(targetAngle - currentAngle);
+          const maxTurn = 5.5 * deltaSec;
+          const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, diff));
+          p.vx = Math.cos(nextAngle) * speed;
+          p.vy = Math.sin(nextAngle) * speed;
+          p.sprite.setRotation(nextAngle);
+        }
+      }
 
       const moveStepX = p.vx * deltaSec;
       const moveStepY = p.vy * deltaSec;

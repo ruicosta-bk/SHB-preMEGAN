@@ -9,14 +9,16 @@ export class EnemyShooter extends EnemyBase {
   private isAiming: boolean = false;
   private laserGraphic: Phaser.GameObjects.Graphics;
   private lockedAngle: number = 0;
+  private variant: 'shooter' | 'frost_mage';
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, 'enemy_shooter', 12, 75);
+  constructor(scene: Phaser.Scene, x: number, y: number, variant: 'shooter' | 'frost_mage' = 'shooter') {
+    super(scene, x, y, variant === 'frost_mage' ? 'enemy_frost_mage' : 'enemy_shooter', variant === 'frost_mage' ? 14 : 12, 75);
+    this.variant = variant;
     this.laserGraphic = scene.add.graphics().setDepth(11);
   }
 
   public getEnemyType(): string {
-    return 'shooter';
+    return this.variant;
   }
 
   public override update(
@@ -42,9 +44,9 @@ export class EnemyShooter extends EnemyBase {
     if (this.isAiming) {
       this.aimTimer -= deltaSec;
 
-      // Draw red laser aim telegraph
+      // Draw laser aim telegraph
       this.laserGraphic.clear();
-      this.laserGraphic.lineStyle(1.5, 0xef4444, 0.7);
+      this.laserGraphic.lineStyle(1.5, this.variant === 'frost_mage' ? 0x38bdf8 : 0xef4444, 0.7);
       this.laserGraphic.beginPath();
       this.laserGraphic.moveTo(this.sprite.x, this.sprite.y);
       this.laserGraphic.lineTo(
@@ -58,18 +60,35 @@ export class EnemyShooter extends EnemyBase {
         this.laserGraphic.clear();
         this.shootCooldownRemaining = 2.2;
 
-        // Fire laser bolt
         audio.playEnemyShoot();
-        pool.spawn({
-          x: this.sprite.x + Math.cos(this.lockedAngle) * 16,
-          y: this.sprite.y + Math.sin(this.lockedAngle) * 16,
-          angleRad: this.lockedAngle,
-          speed: 460,
-          damage: 2,
-          isPlayer: false,
-          texture: 'bullet_enemy_laser',
-          range: 500
-        });
+        if (this.variant === 'frost_mage') {
+          // Frost mage fires 2 chilled ice shards that briefly slow the player
+          for (const offset of [-0.14, 0.14]) {
+            pool.spawn({
+              x: this.sprite.x + Math.cos(this.lockedAngle + offset) * 16,
+              y: this.sprite.y + Math.sin(this.lockedAngle + offset) * 16,
+              angleRad: this.lockedAngle + offset,
+              speed: 310,
+              damage: 1,
+              isPlayer: false,
+              element: 'frost',
+              texture: 'bullet_enemy_frost',
+              range: 460
+            });
+          }
+        } else {
+          // Fire laser bolt
+          pool.spawn({
+            x: this.sprite.x + Math.cos(this.lockedAngle) * 16,
+            y: this.sprite.y + Math.sin(this.lockedAngle) * 16,
+            angleRad: this.lockedAngle,
+            speed: 460,
+            damage: 2,
+            isPlayer: false,
+            texture: 'bullet_enemy_laser',
+            range: 500
+          });
+        }
       }
       return;
     }
