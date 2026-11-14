@@ -25,6 +25,7 @@ export interface RectCollider {
 export interface PickupItem {
   type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item' | 'statue' | 'portal' | 'vending' | 'forge';
   sprite: Phaser.GameObjects.Sprite;
+  halo?: Phaser.GameObjects.Sprite;
   data?: any;
   price?: number;
   label?: string;
@@ -220,10 +221,7 @@ export class RoomManager {
       for (const t of torches) {
         const tx = room.worldX + t.x * ts + ts / 2;
         const ty = room.worldY + t.y * ts + ts / 2 + 6;
-        const glow = this.scene.add.sprite(tx, ty, 'torch_glow').setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
-        const torchSpr = this.scene.add.sprite(tx, ty, 'torch_1').setDepth(4);
-        this.worldObjects.push(glow, torchSpr);
-        this.torchSprites.push(torchSpr);
+        this.spawnTorch(tx, ty);
       }
 
       // Add floor spike traps
@@ -312,10 +310,7 @@ export class RoomManager {
       const midTorchX = corr.x + corr.width / 2;
       const midTorchY = corr.orientation === 'horizontal' ? corr.y + 18 : corr.y + corr.height / 2;
       if (corr.orientation === 'horizontal') {
-        const glow = this.scene.add.sprite(midTorchX, midTorchY, 'torch_glow').setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
-        const torchSpr = this.scene.add.sprite(midTorchX, midTorchY, 'torch_1').setDepth(4);
-        this.worldObjects.push(glow, torchSpr);
-        this.torchSprites.push(torchSpr);
+        this.spawnTorch(midTorchX, midTorchY);
       }
     }
 
@@ -709,6 +704,84 @@ export class RoomManager {
     }
   }
 
+  private getBiomeTorchTint(): number {
+    if (this.floorMeta.biomeId === 'frost_cavern') return 0x38bdf8;
+    if (this.floorMeta.biomeId === 'molten_core') return 0xf97316;
+    return 0xf59e0b;
+  }
+
+  private spawnTorch(x: number, y: number): void {
+    const useSoftGlow = Boolean(this.scene.textures?.exists?.('glow_soft'));
+    const glow = this.scene.add
+      .sprite(x, y, useSoftGlow ? 'glow_soft' : 'torch_glow')
+      .setDepth(2)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(this.getBiomeTorchTint());
+    if (useSoftGlow) {
+      glow.setScale(2.0).setAlpha(0.75);
+    }
+    const torchSpr = this.scene.add.sprite(x, y, 'torch_1').setDepth(4);
+    this.worldObjects.push(glow, torchSpr);
+    this.torchSprites.push(torchSpr);
+  }
+
+  private createPulsingHalo(
+    x: number,
+    y: number,
+    texture: 'glow_ring' | 'glow_soft',
+    tint: number,
+    baseAlpha: number,
+    baseScale: number,
+    targetScale: number,
+    targetAlpha: number,
+    duration: number
+  ): Phaser.GameObjects.Sprite {
+    const halo = this.scene.add
+      .sprite(x, y, texture)
+      .setDepth(5)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(tint)
+      .setAlpha(baseAlpha)
+      .setScale(baseScale);
+
+    this.scene.tweens.add({
+      targets: halo,
+      scaleX: targetScale,
+      scaleY: targetScale,
+      alpha: targetAlpha,
+      duration,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    return halo;
+  }
+
+  public setPickupHaloColor(pickup: PickupItem, color: number, alpha?: number): void {
+    if (!pickup.halo || !pickup.halo.active) return;
+    pickup.halo.setTint(color);
+    if (alpha !== undefined) {
+      pickup.halo.setAlpha(alpha);
+    }
+  }
+
+  public removePickup(pickup: PickupItem): void {
+    if (pickup.halo) {
+      this.scene.tweens?.killTweensOf?.(pickup.halo);
+      if (pickup.halo.active) pickup.halo.destroy();
+      pickup.halo = undefined;
+    }
+    if (pickup.sprite) {
+      this.scene.tweens?.killTweensOf?.(pickup.sprite);
+      if (pickup.sprite.active) pickup.sprite.destroy();
+    }
+    const idx = this.pickups.indexOf(pickup);
+    if (idx !== -1) {
+      this.pickups.splice(idx, 1);
+    }
+  }
+
   public spawnPickup(
     type: PickupItem['type'],
     x: number,
@@ -716,7 +789,7 @@ export class RoomManager {
     data?: any,
     price?: number,
     label?: string
-  ): void {
+  ): PickupItem {
     let texture = 'pickup_energy';
     if (type === 'heart') texture = 'pickup_heart';
     else if (type === 'coin') texture = 'pickup_coin';
@@ -733,7 +806,40 @@ export class RoomManager {
       else if (data?.subType === 'weapon') texture = (data?.weapon as WeaponData)?.iconTexture || 'icon_blade';
     }
 
+    let halo: Phaser.GameObjects.Sprite | undefined;
+    if (type === 'weapon') {
+      const wData = data as WeaponData | undefined;
+      const isTier2 = wData?.tier === 2;
+      halo = this.createPulsingHalo(
+        x,
+        y + 2,
+        'glow_ring',
+        isTier2 ? 0xfacc15 : 0x64748b,
+        isTier2 ? 0.85 : 0.45,
+        isTier2 ? 1.05 : 0.85,
+        isTier2 ? 1.24 : 1.0,
+        isTier2 ? 0.45 : 0.22,
+        isTier2 ? 750 : 950
+      );
+    } else if (type === 'shop_item' && data?.subType === 'weapon' && (data?.weapon as WeaponData | undefined)?.tier === 2) {
+      halo = this.createPulsingHalo(x, y + 2, 'glow_ring', 0xfacc15, 0.85, 1.05, 1.24, 0.45, 750);
+    } else if (type === 'forge') {
+      halo = this.createPulsingHalo(x, y, 'glow_soft', 0x38bdf8, 0.75, 1.2, 1.5, 0.4, 850);
+    } else if (type === 'portal') {
+      halo = this.createPulsingHalo(x, y, 'glow_soft', 0xa855f7, 0.85, 1.4, 1.8, 0.45, 600);
+    }
+
     const spr = this.scene.add.sprite(x, y, texture).setDepth(6);
+
+    if (halo) {
+      const boundHalo = halo;
+      spr.once('destroy', () => {
+        if (boundHalo.active) {
+          this.scene.tweens?.killTweensOf?.(boundHalo);
+          boundHalo.destroy();
+        }
+      });
+    }
 
     if (type === 'portal') {
       this.scene.tweens.add({
@@ -756,7 +862,9 @@ export class RoomManager {
       });
     }
 
-    this.pickups.push({ type, sprite: spr, data, price, label });
+    const item: PickupItem = { type, sprite: spr, halo, data, price, label };
+    this.pickups.push(item);
+    return item;
   }
 
   public lockRoomDoors(roomIndex: number): void {
@@ -796,7 +904,15 @@ export class RoomManager {
     this.doorColliders = [];
     for (const e of this.activeEnemies) e.destroy();
     this.activeEnemies = [];
-    for (const p of this.pickups) p.sprite.destroy();
+    for (const p of this.pickups) {
+      if (p.halo) {
+        this.scene.tweens?.killTweensOf?.(p.halo);
+        if (p.halo.active) p.halo.destroy();
+        p.halo = undefined;
+      }
+      this.scene.tweens?.killTweensOf?.(p.sprite);
+      p.sprite.destroy();
+    }
     this.pickups = [];
     for (const m of this.merchantSprites) m.destroy();
     this.merchantSprites = [];

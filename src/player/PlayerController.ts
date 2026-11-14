@@ -11,6 +11,7 @@ import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { MetaBonuses } from '../core/MetaProgression';
+import { EffectsManager } from '../presentation/EffectsManager';
 
 export class PlayerController {
   public scene: Phaser.Scene;
@@ -107,6 +108,7 @@ export class PlayerController {
   private animFrame: number = 0;
   private bobTimer: number = 0;
   private dustTimer: number = 0;
+  private effects: EffectsManager | null = null;
 
   // Milestone 4: Weapon forge upgrades, Vending drink buffs & Biome terrain hazards
   public forgeLevels: Map<string, number> = new Map();
@@ -289,6 +291,21 @@ export class PlayerController {
     audio.playPickup();
     this.emitWeaponChange();
     return nextLevel;
+  }
+
+  public setEffectsManager(fx: EffectsManager): void {
+    this.effects = fx;
+  }
+
+  public getMergeMatchForWeapon(candidate: WeaponData): WeaponData | null {
+    for (const held of this.weaponSlots) {
+      if (!held) continue;
+      const mergedId = findMergeResult(held.id, candidate.id);
+      if (mergedId && WEAPONS[mergedId]) {
+        return held;
+      }
+    }
+    return null;
   }
 
   public getMergePreview(): { first: WeaponData; second: WeaponData; result: WeaponData } | null {
@@ -610,14 +627,18 @@ export class PlayerController {
       this.dustTimer += deltaSec;
       if (this.dustTimer >= 0.16) {
         this.dustTimer = 0;
-        const dust = this.scene.add.rectangle(this.sprite.x, this.sprite.y + 11, 4, 3, 0x64748b, 0.5).setDepth(8);
-        this.scene.tweens.add({
-          targets: dust,
-          y: dust.y - 4,
-          alpha: 0,
-          duration: 220,
-          onComplete: () => dust.destroy()
-        });
+        if (this.effects) {
+          this.effects.spawnFootstepDust(this.sprite.x, this.sprite.y + 11);
+        } else {
+          const dust = this.scene.add.rectangle(this.sprite.x, this.sprite.y + 11, 4, 3, 0x64748b, 0.5).setDepth(8);
+          this.scene.tweens.add({
+            targets: dust,
+            y: dust.y - 4,
+            alpha: 0,
+            duration: 220,
+            onComplete: () => dust.destroy()
+          });
+        }
       }
     }
 
@@ -1337,6 +1358,16 @@ export class PlayerController {
   }
 
   private createDashGhost(tint: number): void {
+    if (this.effects) {
+      this.effects.spawnDashAfterimage(
+        this.sprite.x,
+        this.sprite.y,
+        this.sprite.texture.key,
+        this.sprite.flipX,
+        tint
+      );
+      return;
+    }
     const ghost = this.scene.add.sprite(this.sprite.x, this.sprite.y, this.sprite.texture.key);
     ghost.setDepth(9);
     ghost.setFlipX(this.sprite.flipX);

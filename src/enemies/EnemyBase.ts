@@ -23,6 +23,7 @@ export abstract class EnemyBase implements EntityWithStatus {
   protected knockbackVy: number = 0;
   protected eliteAura: Phaser.GameObjects.Graphics | null = null;
   protected bobTimer: number = Math.random() * Math.PI * 2;
+  private hasElementalTint: boolean = false;
 
   get x(): number { return this.sprite.x; }
   get y(): number { return this.sprite.y; }
@@ -149,25 +150,27 @@ export abstract class EnemyBase implements EntityWithStatus {
     if (this.isDead) return;
 
     // Update status effects (DoT, freeze slow)
-    const { isFrozen } = StatusManager.updateStatus(this, deltaSec);
+    StatusManager.updateStatus(this, deltaSec);
+    if (this.isDead) return;
+
+    const hasFreeze = this.statusEffects.has('freeze');
+    const hasBurn = this.statusEffects.has('burn');
 
     // Flash recovery or status visual tint
-    if (this.hitFlashTimer > 0) {
+    const wasFlashing = this.hitFlashTimer > 0;
+    if (wasFlashing) {
       this.hitFlashTimer -= deltaSec;
-      if (this.hitFlashTimer <= 0) {
-        if (this.statusEffects.has('burn')) {
-          this.sprite.setTint(0xf97316); // Fiery orange
-        } else if (isFrozen) {
-          this.sprite.setTint(0x38bdf8); // Icy cyan
-        } else {
-          this.sprite.clearTint();
-        }
-      }
-    } else {
-      if (this.statusEffects.has('burn')) {
-        this.sprite.setTint(0xf97316);
-      } else if (isFrozen) {
-        this.sprite.setTint(0x38bdf8);
+    }
+    if (this.hitFlashTimer <= 0) {
+      if (hasFreeze) {
+        this.sprite.setTint(0x67e8f9); // Icy cyan
+        this.hasElementalTint = true;
+      } else if (hasBurn) {
+        this.sprite.setTint(Math.floor(this.bobTimer * 2) % 2 === 0 ? 0xfb923c : 0xffffff);
+        this.hasElementalTint = true;
+      } else if (wasFlashing || this.hasElementalTint) {
+        this.sprite.clearTint();
+        this.hasElementalTint = false;
       }
     }
 
@@ -195,8 +198,8 @@ export abstract class EnemyBase implements EntityWithStatus {
     // Strict depenetration + room bounds failsafe: never allow enemy to stay inside pillars or outside walls
     this.ensureUnstuck(walls, roomBounds);
 
-    // Facing direction & subtle Soul Knight breathing squash-stretch
-    this.bobTimer += deltaSec * 5.2;
+    // Facing direction & subtle Soul Knight breathing squash-stretch (slower when frozen)
+    this.bobTimer += deltaSec * (hasFreeze ? 2.4 : 5.2);
     const isBoss = this.getEnemyType() === 'boss_ignis' || this.getEnemyType() === 'boss_frost';
     const baseScale = this.isElite ? 1.38 : isBoss ? 1.2 : 1.0;
     const breath = Math.sin(this.bobTimer) * 0.045;
@@ -204,7 +207,10 @@ export abstract class EnemyBase implements EntityWithStatus {
     this.sprite.setFlipX(playerX < this.sprite.x);
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 8);
     if (this.eliteAura) {
+      const auraPulse = Math.sin(this.bobTimer * 1.2);
       this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
+      this.eliteAura.setScale(1 + auraPulse * 0.08);
+      this.eliteAura.setAlpha(0.75 + auraPulse * 0.25);
     }
   }
 

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TextureGenerator } from '../presentation/TextureGenerator';
+import { EffectsManager, STATUS_ELEMENT_COLORS, StatusElement } from '../presentation/EffectsManager';
 import { DungeonGenerator } from '../world/DungeonGenerator';
 import { RoomManager, PickupItem } from '../world/RoomManager';
 import { PlayerController } from '../player/PlayerController';
@@ -22,6 +23,7 @@ export class MainScene extends Phaser.Scene {
   private projectilePool!: ProjectilePool;
   private roomManager!: RoomManager;
   private floatingNumbers!: FloatingNumbers;
+  private effects!: EffectsManager;
   private uiScene!: UIScene;
 
   // Game state
@@ -41,6 +43,11 @@ export class MainScene extends Phaser.Scene {
   // Nearest interactive pickup
   private nearestPickup: PickupItem | null = null;
 
+  // Smooth camera look-ahead target
+  private cameraTarget: Phaser.Math.Vector2 = new Phaser.Math.Vector2(0, 0);
+  private camLookAheadX: number = 0;
+  private camLookAheadY: number = 0;
+
   constructor() {
     super({ key: 'MainScene' });
   }
@@ -49,9 +56,10 @@ export class MainScene extends Phaser.Scene {
     // 1. Generate all textures procedurally
     TextureGenerator.generateAll(this);
 
-    // 2. Initialize Projectile Pool & World Systems
+    // 2. Initialize Projectile Pool, Effects Pool & World Systems
     this.projectilePool = new ProjectilePool(this);
     this.floatingNumbers = new FloatingNumbers(this);
+    this.effects = new EffectsManager(this, 96);
 
     // 3. Launch UI Scene in parallel
     this.scene.launch('UIScene');
@@ -100,6 +108,20 @@ export class MainScene extends Phaser.Scene {
     events.on('combat:enemy-hit', (data: any) => {
       this.damageDealt += data.damage;
       this.floatingNumbers.showDamage(data.x, data.y, data.damage, data.isCrit);
+      if (this.effects) {
+        const element = data.element as string | undefined;
+        const elemColor =
+          element === 'frost' || element === 'fire' || element === 'lightning'
+            ? STATUS_ELEMENT_COLORS[element]
+            : 0xfef08a;
+        this.effects.spawnHitSparks(data.x, data.y, elemColor, data.isCrit ? 8 : 5);
+        if (
+          (element === 'fire' || element === 'frost' || element === 'lightning') &&
+          (data.isCrit || Math.random() < 0.25)
+        ) {
+          this.effects.spawnStatusPop(data.x, data.y, element as StatusElement);
+        }
+      }
     });
 
     events.on('room:cleared', () => {
@@ -111,7 +133,11 @@ export class MainScene extends Phaser.Scene {
       if (this.player) {
         this.player.onEnemyKilled();
       }
-      if (data.type === 'boss_ignis' || data.type === 'boss_frost') {
+      const isBoss = data.type === 'boss_ignis' || data.type === 'boss_frost';
+      if (this.effects) {
+        this.effects.spawnDeathBurst(data.x, data.y, isBoss ? 0xf59e0b : 0xf87171);
+      }
+      if (isBoss) {
         audio.playRoomClear();
         this.cameras.main.shake(350, 0.02);
         if (this.roomManager) {
@@ -288,8 +314,12 @@ export class MainScene extends Phaser.Scene {
     this.isPaused = false;
     this.isTransitioningFloor = false;
     this.nearestPickup = null;
+    this.camLookAheadX = 0;
+    this.camLookAheadY = 0;
     this.floatingNumbers?.hidePrompt();
     this.projectilePool?.clearAll();
+    this.effects?.clearAll();
+    this.cameras?.main?.stopFollow();
 
     if (this.roomManager) {
       this.roomManager.clearCurrentRoomVisuals();
@@ -334,6 +364,7 @@ export class MainScene extends Phaser.Scene {
     const metaBonuses = getMetaBonuses();
 
     this.player = new PlayerController(this, playerSpawnX, playerSpawnY, this.currentHeroId, metaBonuses);
+    this.player.setEffectsManager(this.effects);
     this.pet = new PetController(this, playerSpawnX, playerSpawnY);
 
     // Build entire connected dungeon floor
@@ -346,8 +377,12 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Setup Camera for gameplay (1.5x zoom frames compact Soul Knight rooms crisply)
-    this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
+    this.camLookAheadX = 0;
+    this.camLookAheadY = 0;
+    this.cameraTarget.set(playerSpawnX, playerSpawnY);
+    this.cameras.main.startFollow(this.cameraTarget, true, 0.16, 0.16);
     this.cameras.main.setZoom(1.5);
+    this.cameras.main.centerOn(playerSpawnX, playerSpawnY);
     this.floatingNumbers.showNotice(playerSpawnX, playerSpawnY - 36, `TẦNG ${meta.code}: ${meta.biomeNameVi.toUpperCase()}`, meta.accentHex);
   }
 
@@ -368,6 +403,7 @@ export class MainScene extends Phaser.Scene {
 
       this.currentFloor += 1;
       this.projectilePool.clearAll();
+      this.effects?.clearAll();
       if (this.roomManager) {
         this.roomManager.clearCurrentRoomVisuals();
       }
@@ -382,6 +418,10 @@ export class MainScene extends Phaser.Scene {
 
       this.player.prepareForNextFloor(spawnX, spawnY);
       this.pet.resetPosition(spawnX, spawnY);
+      this.camLookAheadX = 0;
+      this.camLookAheadY = 0;
+      this.cameraTarget.set(spawnX, spawnY);
+      this.cameras.main.centerOn(spawnX, spawnY);
       this.roomManager.buildEntireFloor();
 
       const meta = getFloorMeta(this.currentFloor);
@@ -485,13 +525,18 @@ export class MainScene extends Phaser.Scene {
       this.cameras.main.shake(120, 0.007);
     }
 
-    // 2. Camera slight lookahead towards mouse
-    const cam = this.cameras.main;
-    const lookX = this.player.sprite.x + (pointer.worldX - this.player.sprite.x) * 0.18;
-    const lookY = this.player.sprite.y + (pointer.worldY - this.player.sprite.y) * 0.18;
-    cam.centerOn(
-      Phaser.Math.Linear(cam.midPoint.x, lookX, 0.08),
-      Phaser.Math.Linear(cam.midPoint.y, lookY, 0.08)
+    // 2. Smooth camera look-ahead toward pointer (clamped <= 36px)
+    const lookDx = pointer.worldX - this.player.sprite.x;
+    const lookDy = pointer.worldY - this.player.sprite.y;
+    const lookDist = Math.hypot(lookDx, lookDy);
+    const maxLookOffset = 36;
+    const lookScale = lookDist > 0 ? Math.min(maxLookOffset, lookDist * 0.18) / lookDist : 0;
+    const lookLerp = Math.min(1, deltaSec * 6);
+    this.camLookAheadX = Phaser.Math.Linear(this.camLookAheadX, lookDx * lookScale, lookLerp);
+    this.camLookAheadY = Phaser.Math.Linear(this.camLookAheadY, lookDy * lookScale, lookLerp);
+    this.cameraTarget.set(
+      this.player.sprite.x + this.camLookAheadX,
+      this.player.sprite.y + this.camLookAheadY
     );
 
     // 3. Update Room Manager (Enemies AI, Room Clear, Seamless Room Transitions)
@@ -529,7 +574,8 @@ export class MainScene extends Phaser.Scene {
     // 5. Check Projectile Collisions
     this.checkProjectileHits();
 
-    // 6. Check Pickups Proximity
+    // 6. Update Pooled VFX & Check Pickups Proximity
+    this.effects?.update(deltaSec);
     this.updatePickupsProximity(deltaSec);
   }
 
@@ -538,7 +584,12 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.fade(120, 11, 13, 19, false, (_cam: any, progress: number) => {
       if (progress >= 1) {
         this.projectilePool.clearAll();
+        this.effects?.clearAll();
         this.player.sprite.setPosition(spawnX, spawnY);
+        this.camLookAheadX = 0;
+        this.camLookAheadY = 0;
+        this.cameraTarget.set(spawnX, spawnY);
+        this.cameras.main.centerOn(spawnX, spawnY);
         this.roomManager.enterRoom(targetRoomIdx);
         if (this.uiScene && this.uiScene.hud) {
           this.uiScene.hud.renderMinimap(this.roomManager.rooms, targetRoomIdx);
@@ -815,6 +866,17 @@ export class MainScene extends Phaser.Scene {
         return;
       }
 
+      // Smart Floor Weapon Merge Indicator (cyan halo when compatible with either held weapon)
+      if (p.type === 'weapon') {
+        const wData = p.data as WeaponData;
+        const mergeWith = this.player.getMergeMatchForWeapon(wData);
+        if (mergeWith) {
+          this.roomManager.setPickupHaloColor(p, 0x22d3ee, 0.95);
+        } else {
+          this.roomManager.setPickupHaloColor(p, wData.tier === 2 ? 0xfacc15 : 0x64748b);
+        }
+      }
+
       // Check interaction proximity for Chest, Altar, Statue, Portal, Weapon, Shop Item (<48px)
       if (dist < 48 && dist < closestDist) {
         closestDist = dist;
@@ -826,7 +888,10 @@ export class MainScene extends Phaser.Scene {
       let prompt = '[E] Tương tác';
       if (this.nearestPickup.type === 'weapon') {
         const wData = this.nearestPickup.data as WeaponData;
-        prompt = `[E] Nhặt: ${wData.nameVi}`;
+        const mergeWith = this.player.getMergeMatchForWeapon(wData);
+        prompt = mergeWith
+          ? `[E] Nhặt: ${wData.nameVi} ★ (Ghép ${mergeWith.nameVi}!)`
+          : `[E] Nhặt: ${wData.nameVi}`;
       } else if (this.nearestPickup.type === 'chest') {
         prompt = '[E] Mở Rương Báu Cổ';
       } else if (this.nearestPickup.type === 'altar') {
@@ -987,11 +1052,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private removePickup(pickup: PickupItem): void {
-    pickup.sprite.destroy();
-    const idx = this.roomManager.pickups.indexOf(pickup);
-    if (idx !== -1) {
-      this.roomManager.pickups.splice(idx, 1);
-    }
+    this.roomManager.removePickup(pickup);
     if (this.nearestPickup === pickup) {
       this.nearestPickup = null;
       this.floatingNumbers.hidePrompt();

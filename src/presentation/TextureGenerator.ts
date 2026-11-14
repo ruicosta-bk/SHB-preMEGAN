@@ -7,6 +7,7 @@ export class TextureGenerator {
     this.createShadow(tm);
     this.createTiles(tm);
     this.createEnvironmentAndTraps(tm);
+    this.createVfxTextures(tm);
     this.createAllHeroFrames(tm);
     this.createPetFrames(tm);
     this.createEnemyFrames(tm);
@@ -211,11 +212,21 @@ export class TextureGenerator {
 
     drawBiomeFloor('frost_floor_tile', '#0c273b', '#123650', '#0e2c42', '#071926');
     drawBiomeFloor('frost_floor_2', '#0c273b', '#123650', '#0e2c42', '#071926', c => {
+      // Subtle frosted seam and diamond crystal gleam
+      c.fillStyle = '#164e63';
+      c.fillRect(4, 10, 6, 1);
+      c.fillRect(19, 6, 5, 1);
+      c.fillStyle = '#38bdf8';
+      c.fillRect(6, 5, 3, 2);
+      c.fillRect(20, 20, 5, 3);
       c.fillStyle = '#67e8f9';
-      c.fillRect(6, 5, 3, 1);
-      c.fillRect(21, 21, 4, 2);
-      c.fillStyle = '#a5f3fc';
+      c.fillRect(6, 5, 2, 1);
+      c.fillRect(21, 21, 3, 2);
+      c.fillStyle = '#cffafe';
       c.fillRect(22, 21, 2, 1);
+      c.fillStyle = '#ffffff';
+      c.fillRect(7, 5, 1, 1);
+      c.fillRect(22, 21, 1, 1);
     });
 
     ctx = this.createCanvas(tm, 'frost_wall_tile', 32, 32);
@@ -264,11 +275,19 @@ export class TextureGenerator {
     // --- BIOME 3: MOLTEN CORE TILES ---
     drawBiomeFloor('lava_floor_tile', '#241214', '#2e1619', '#211012', '#130809');
     drawBiomeFloor('lava_floor_2', '#241214', '#2e1619', '#211012', '#130809', c => {
-      c.fillStyle = '#9a3412';
+      // Cracked volcanic fissure with bright ember vein highlight
+      c.fillStyle = '#7c2d12';
+      c.fillRect(4, 5, 7, 2);
+      c.fillRect(19, 21, 7, 3);
+      c.fillStyle = '#ea580c';
       c.fillRect(5, 6, 5, 1);
-      c.fillRect(20, 22, 4, 2);
+      c.fillRect(20, 22, 5, 2);
       c.fillStyle = '#f97316';
-      c.fillRect(21, 22, 2, 1);
+      c.fillRect(6, 6, 3, 1);
+      c.fillRect(21, 22, 3, 1);
+      c.fillStyle = '#fbbf24';
+      c.fillRect(7, 6, 1, 1);
+      c.fillRect(22, 22, 2, 1);
     });
 
     ctx = this.createCanvas(tm, 'lava_wall_tile', 32, 32);
@@ -413,6 +432,11 @@ export class TextureGenerator {
     // 5. Boss Exit Portal (44x44)
     const drawPortal = (key: string, rot: boolean) => {
       const pCtx = this.createCanvas(tm, key, 44, 44);
+      // Deep obsidian-indigo outer ring
+      pCtx.fillStyle = '#1e1b4b';
+      pCtx.beginPath();
+      pCtx.ellipse(22, 22, 20, 21, 0, 0, Math.PI * 2);
+      pCtx.fill();
       pCtx.fillStyle = '#312e81';
       pCtx.beginPath();
       pCtx.ellipse(22, 22, 18, 20, 0, 0, Math.PI * 2);
@@ -421,16 +445,86 @@ export class TextureGenerator {
       pCtx.beginPath();
       pCtx.ellipse(22, 22, rot ? 13 : 15, rot ? 16 : 14, 0, 0, Math.PI * 2);
       pCtx.fill();
+      // Concentric glowing rune pixels along the outer & inner vortex rings
+      const runeAngles = [0, Math.PI * 0.25, Math.PI * 0.5, Math.PI * 0.75, Math.PI, Math.PI * 1.25, Math.PI * 1.5, Math.PI * 1.75];
+      runeAngles.forEach((baseAngle, idx) => {
+        const a = baseAngle + (rot ? Math.PI * 0.125 : 0);
+        const rx = Math.round(22 + Math.cos(a) * 15);
+        const ry = Math.round(22 + Math.sin(a) * 16.5);
+        pCtx.fillStyle = idx % 2 === 0 ? '#22d3ee' : '#c084fc';
+        pCtx.fillRect(rx - 1, ry - 1, 2, 2);
+        pCtx.fillStyle = idx % 2 === 0 ? '#a5f3fc' : '#e9d5ff';
+        pCtx.fillRect(rx, ry, 1, 1);
+
+        const ix = Math.round(22 + Math.cos(a + 0.35) * 10);
+        const iy = Math.round(22 + Math.sin(a + 0.35) * 11.5);
+        pCtx.fillStyle = '#7dd3fc';
+        pCtx.fillRect(ix, iy, 2, 2);
+      });
       pCtx.fillStyle = '#38bdf8';
       pCtx.beginPath();
       pCtx.ellipse(22, 22, 8, 10, 0, 0, Math.PI * 2);
       pCtx.fill();
+      pCtx.fillStyle = '#bae6fd';
+      pCtx.beginPath();
+      pCtx.ellipse(22, 22, 5, 6.5, 0, 0, Math.PI * 2);
+      pCtx.fill();
       pCtx.fillStyle = '#e0f2fe';
       pCtx.fillRect(19, 18, 6, 8);
+      pCtx.fillStyle = '#ffffff';
+      pCtx.fillRect(21, 20, 2, 4);
       this.refresh(tm, key);
     };
     drawPortal('portal_1', false);
     drawPortal('portal_2', true);
+  }
+
+  private static createVfxTextures(tm: Phaser.Textures.TextureManager): void {
+    // Soft radial glow (48x48, pure white for tinting + ADD blend mode)
+    let ctx = this.createCanvas(tm, 'glow_soft', 48, 48);
+    const grad = ctx.createRadialGradient(24, 24, 0, 24, 24, 24);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.18)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 48, 48);
+    this.refresh(tm, 'glow_soft');
+
+    // Crisp hollow aura/status ring (36x36, pure white for tinting)
+    ctx = this.createCanvas(tm, 'glow_ring', 36, 36);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(18, 18, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(18, 18, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    this.refresh(tm, 'glow_ring');
+
+    // Crisp bright spark pixel (4x4, pure white for pooled hit/muzzle/death sparks)
+    ctx = this.createCanvas(tm, 'spark_pixel', 4, 4);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    ctx.fillRect(0, 0, 4, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(1, 1, 2, 2);
+    this.refresh(tm, 'spark_pixel');
+
+    // Soft rounded dust puff (10x10, pure white for footstep & explosion smoke)
+    ctx = this.createCanvas(tm, 'dust_puff', 10, 10);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.beginPath();
+    ctx.arc(5, 5, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.beginPath();
+    ctx.arc(5, 5, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(4, 4, 2, 2);
+    this.refresh(tm, 'dust_puff');
   }
 
   private static createAllHeroFrames(tm: Phaser.Textures.TextureManager): void {
