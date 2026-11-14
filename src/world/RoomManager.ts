@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { RoomState, DoorData } from '../types/room';
+import { RoomState, DoorData, CorridorData } from '../types/room';
 import { EnemyBase } from '../enemies/EnemyBase';
 import { EnemyGrunt } from '../enemies/EnemyGrunt';
 import { EnemyShooter } from '../enemies/EnemyShooter';
@@ -10,42 +10,76 @@ import { ProjectilePool } from '../combat/ProjectilePool';
 import { InteractiveProps } from './InteractiveProps';
 import { WeaponData } from '../types/weapon';
 import { WEAPONS } from '../data/weapons';
-import { UPGRADES } from '../data/upgrades';
-import { UpgradeData } from '../types/upgrade';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 
+export interface RectCollider {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface PickupItem {
-  type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item';
+  type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item' | 'statue' | 'portal';
   sprite: Phaser.GameObjects.Sprite;
   data?: any;
   price?: number;
   label?: string;
 }
 
+interface DoorVisualGroup {
+  door: DoorData;
+  sprites: Phaser.GameObjects.Sprite[];
+  colliders: RectCollider[];
+}
+
+interface SpikeTrap {
+  x: number;
+  y: number;
+  roomIndex: number;
+  sprite: Phaser.GameObjects.Sprite;
+}
+
 export class RoomManager {
   private scene: Phaser.Scene;
   public rooms: RoomState[];
+  public corridors: CorridorData[];
   public currentRoomIndex: number = 0;
   public interactiveProps: InteractiveProps;
 
-  // Active room visual objects
-  private floorSprites: Phaser.GameObjects.Sprite[] = [];
-  private wallSprites: Phaser.GameObjects.Sprite[] = [];
-  private doorSprites: { door: DoorData; sprite: Phaser.GameObjects.Sprite; hitZone: Phaser.Geom.Rectangle }[] = [];
-  private merchantSprites: Phaser.GameObjects.Sprite[] = [];
-  public wallColliders: { x: number; y: number; width: number; height: number }[] = [];
-  public doorColliders: { x: number; y: number; width: number; height: number }[] = [];
+  // Persistent floor objects (RenderTextures + animated props)
+  private worldObjects: Phaser.GameObjects.GameObject[] = [];
+  private fogOverlays: Map<number, Phaser.GameObjects.Rectangle> = new Map();
+  private roomDoorsMap: Map<number, DoorVisualGroup[]> = new Map();
+  private spawnedEnemyRooms: Set<number> = new Set();
 
-  // Active enemies in current room
+  // Torch animation
+  private torchSprites: Phaser.GameObjects.Sprite[] = [];
+  private torchTimer: number = 0;
+  private torchFrame: boolean = false;
+
+  // Floor spike traps
+  private spikeTraps: SpikeTrap[] = [];
+  private trapCycleTimer: number = 0;
+  public areTrapsActive: boolean = false;
+
+  // Colliders
+  public staticWallColliders: RectCollider[] = [];
+  public wallColliders: RectCollider[] = [];
+  public doorColliders: RectCollider[] = [];
+
+  // Active enemies in current combat encounter
   public activeEnemies: EnemyBase[] = [];
 
-  // Pickups in world
+  // Pickups & interactive world objects across the floor
   public pickups: PickupItem[] = [];
+  private merchantSprites: Phaser.GameObjects.Sprite[] = [];
 
-  constructor(scene: Phaser.Scene, rooms: RoomState[]) {
+  constructor(scene: Phaser.Scene, rooms: RoomState[], corridors: CorridorData[] = []) {
     this.scene = scene;
     this.rooms = rooms;
+    this.corridors = corridors;
     this.interactiveProps = new InteractiveProps(scene);
   }
 
@@ -53,115 +87,265 @@ export class RoomManager {
     return this.rooms[this.currentRoomIndex];
   }
 
-  public buildRoom(roomIndex: number): void {
+  public getAllSolidColliders(): RectCollider[] {
+    const propColliders = this.interactiveProps ? this.interactiveProps.getObstacleColliders() : [];
+    return [...this.staticWallColliders, ...propColliders];
+  }
+
+  /**
+   * Builds the entire seamless dungeon floor (all rooms, corridors, torches, traps, crates, fog of war).
+   */
+  public buildEntireFloor(): void {
     this.clearCurrentRoomVisuals();
+    const ts = 32;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    // 1. Render every room onto its own cached RenderTexture + add props/torches/doors
+    for (const room of this.rooms) {
+      minX = Math.min(minX, room.worldX);
+      minY = Math.min(minY, room.worldY);
+      maxX = Math.max(maxX, room.worldX + room.width);
+      maxY = Math.max(maxY, room.worldY + room.height);
+
+      const rt = this.scene.add.renderTexture(room.worldX, room.worldY, room.width, room.height)
+        .setOrigin(0, 0)
+        .setDepth(1);
+      this.worldObjects.push(rt);
+
+      const cols = room.layout.width;
+      const rows = room.layout.height;
+      const midCol = Math.floor(cols / 2);
+      const midRow = Math.floor(rows / 2);
+
+      // Draw varied floor tiles
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let tileKey = 'floor_tile';
+          const hash = ((c * 73856093) ^ (r * 19349663) ^ (room.index * 83492791)) >>> 0;
+
+          if (room.layout.floorPattern === 'mosaic' && Math.abs(c - midCol) <= 1 && Math.abs(r - midRow) <= 1) {
+            tileKey = 'floor_mosaic';
+          } else if (room.layout.floorPattern === 'carpet' && Math.abs(r - midRow) <= 1 && c >= 2 && c <= cols - 3) {
+            tileKey = 'floor_carpet';
+          } else if (hash % 17 === 0) {
+            tileKey = 'floor_tile_2';
+          } else if (hash % 23 === 0) {
+            tileKey = 'floor_tile_3';
+          } else if (room.layout.floorPattern === 'rune' && hash % 11 === 0) {
+            tileKey = 'floor_tile_4';
+          }
+
+          rt.drawFrame(tileKey, undefined, c * ts, r * ts);
+        }
+      }
+
+      // Draw perimeter walls leaving 3-tile doorway openings
+      const hasNorth = room.doors.some(d => d.direction === 'north');
+      const hasSouth = room.doors.some(d => d.direction === 'south');
+      const hasEast = room.doors.some(d => d.direction === 'east');
+      const hasWest = room.doors.some(d => d.direction === 'west');
+
+      const isNorthDoorCol = (c: number) => hasNorth && Math.abs(c - midCol) <= 1;
+      const isSouthDoorCol = (c: number) => hasSouth && Math.abs(c - midCol) <= 1;
+      const isWestDoorRow = (r: number) => hasWest && Math.abs(r - midRow) <= 1;
+      const isEastDoorRow = (r: number) => hasEast && Math.abs(r - midRow) <= 1;
+
+      for (let c = 0; c < cols; c++) {
+        if (!isNorthDoorCol(c)) {
+          rt.drawFrame('wall_tile', undefined, c * ts, 0);
+          this.staticWallColliders.push({ x: room.worldX + c * ts, y: room.worldY, width: ts, height: ts });
+        }
+        if (!isSouthDoorCol(c)) {
+          rt.drawFrame('wall_tile', undefined, c * ts, (rows - 1) * ts);
+          this.staticWallColliders.push({ x: room.worldX + c * ts, y: room.worldY + (rows - 1) * ts, width: ts, height: ts });
+        }
+      }
+      for (let r = 1; r < rows - 1; r++) {
+        if (!isWestDoorRow(r)) {
+          rt.drawFrame('wall_tile', undefined, 0, r * ts);
+          this.staticWallColliders.push({ x: room.worldX, y: room.worldY + r * ts, width: ts, height: ts });
+        }
+        if (!isEastDoorRow(r)) {
+          rt.drawFrame('wall_tile', undefined, (cols - 1) * ts, r * ts);
+          this.staticWallColliders.push({ x: room.worldX + (cols - 1) * ts, y: room.worldY + r * ts, width: ts, height: ts });
+        }
+      }
+
+      // Draw internal stone pillars
+      for (const w of room.layout.walls) {
+        rt.drawFrame('pillar_tile', undefined, w.x * ts, w.y * ts);
+        this.staticWallColliders.push({
+          x: room.worldX + w.x * ts,
+          y: room.worldY + w.y * ts,
+          width: ts,
+          height: ts
+        });
+      }
+
+      // Add glowing wall torches
+      const torches = room.layout.torches || [];
+      for (const t of torches) {
+        const tx = room.worldX + t.x * ts + ts / 2;
+        const ty = room.worldY + t.y * ts + ts / 2 + 6;
+        const glow = this.scene.add.sprite(tx, ty, 'torch_glow').setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
+        const torchSpr = this.scene.add.sprite(tx, ty, 'torch_1').setDepth(4);
+        this.worldObjects.push(glow, torchSpr);
+        this.torchSprites.push(torchSpr);
+      }
+
+      // Add floor spike traps
+      const traps = room.layout.traps || [];
+      for (const tr of traps) {
+        const tx = room.worldX + tr.x * ts + ts / 2;
+        const ty = room.worldY + tr.y * ts + ts / 2;
+        const trapSpr = this.scene.add.sprite(tx, ty, 'trap_down').setDepth(2);
+        this.worldObjects.push(trapSpr);
+        this.spikeTraps.push({ x: tx, y: ty, roomIndex: room.index, sprite: trapSpr });
+      }
+
+      // Add breakable crates
+      const crates = room.layout.crates || [];
+      for (const cr of crates) {
+        const cx = room.worldX + cr.x * ts + ts / 2;
+        const cy = room.worldY + cr.y * ts + ts / 2;
+        this.interactiveProps.spawnProp('crate', cx, cy);
+      }
+
+      // Add explosive & toxic barrels in combat rooms
+      if (room.type === 'combat') {
+        this.interactiveProps.spawnProp('explosive', room.worldX + ts * 2.5, room.worldY + ts * 2.5);
+        this.interactiveProps.spawnProp('toxic', room.worldX + room.width - ts * 2.5, room.worldY + ts * 2.5);
+        this.interactiveProps.spawnProp('explosive', room.worldX + room.width - ts * 2.5, room.worldY + room.height - ts * 2.5);
+      }
+
+      // Create 3-tile door threshold visuals (starts open until player enters uncleared room)
+      const doorGroups: DoorVisualGroup[] = [];
+      for (const d of room.doors) {
+        const sprites: Phaser.GameObjects.Sprite[] = [];
+        const colliders: RectCollider[] = [];
+        for (let offset = -1; offset <= 1; offset++) {
+          const sx = d.direction === 'north' || d.direction === 'south' ? d.x + offset * ts : d.x;
+          const sy = d.direction === 'east' || d.direction === 'west' ? d.y + offset * ts : d.y;
+          const spr = this.scene.add.sprite(sx, sy, 'door_open').setDepth(3);
+          this.worldObjects.push(spr);
+          sprites.push(spr);
+          colliders.push({ x: sx - ts / 2, y: sy - ts / 2, width: ts, height: ts });
+        }
+        d.isOpen = true;
+        doorGroups.push({ door: d, sprites, colliders });
+      }
+      this.roomDoorsMap.set(room.index, doorGroups);
+
+      // Spawn static non-combat room contents immediately (Treasure / Rest)
+      if (room.type === 'treasure' || room.type === 'rest') {
+        this.spawnRoomRewards(room);
+      }
+
+      // Fog of War overlay on unvisited rooms (fades away when entered)
+      if (room.index !== 0) {
+        const fog = this.scene.add.rectangle(
+          room.worldX,
+          room.worldY,
+          room.width,
+          room.height,
+          0x05070c,
+          0.72
+        ).setOrigin(0, 0).setDepth(24);
+        this.worldObjects.push(fog);
+        this.fogOverlays.set(room.index, fog);
+      }
+    }
+
+    // 2. Render every connecting corridor onto cached RenderTextures
+    for (const corr of this.corridors) {
+      const rt = this.scene.add.renderTexture(corr.x, corr.y, corr.width, corr.height)
+        .setOrigin(0, 0)
+        .setDepth(1);
+      this.worldObjects.push(rt);
+
+      for (const ft of corr.floorTiles) {
+        rt.drawFrame('floor_tile', undefined, ft.x - corr.x, ft.y - corr.y);
+      }
+      for (const wr of corr.wallRects) {
+        this.staticWallColliders.push(wr);
+        for (let x = wr.x; x < wr.x + wr.width; x += ts) {
+          for (let y = wr.y; y < wr.y + wr.height; y += ts) {
+            rt.drawFrame('wall_tile', undefined, x - corr.x, y - corr.y);
+          }
+        }
+      }
+
+      // Midpoint corridor torch on north/west wall
+      const midTorchX = corr.x + corr.width / 2;
+      const midTorchY = corr.orientation === 'horizontal' ? corr.y + 18 : corr.y + corr.height / 2;
+      if (corr.orientation === 'horizontal') {
+        const glow = this.scene.add.sprite(midTorchX, midTorchY, 'torch_glow').setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
+        const torchSpr = this.scene.add.sprite(midTorchX, midTorchY, 'torch_1').setDepth(4);
+        this.worldObjects.push(glow, torchSpr);
+        this.torchSprites.push(torchSpr);
+      }
+    }
+
+    this.wallColliders = this.staticWallColliders;
+
+    // 3. Set camera bounds covering entire connected dungeon
+    this.scene.cameras.main.setBounds(
+      minX - 160,
+      minY - 160,
+      maxX - minX + 320,
+      maxY - minY + 320
+    );
+
+    this.currentRoomIndex = 0;
+    this.rooms[0].isVisited = true;
+    this.rooms[0].isCurrent = true;
+    events.emit('room:entered', { room: this.rooms[0] });
+  }
+
+  /**
+   * Kept for backwards compatibility / Debug Boss Teleport
+   */
+  public buildRoom(roomIndex: number): void {
+    if (this.worldObjects.length === 0) {
+      this.buildEntireFloor();
+    }
+    this.enterRoom(roomIndex);
+  }
+
+  public enterRoom(roomIndex: number): void {
+    const prevRoom = this.rooms[this.currentRoomIndex];
+    if (prevRoom) prevRoom.isCurrent = false;
+
     this.currentRoomIndex = roomIndex;
     const room = this.rooms[roomIndex];
     room.isVisited = true;
     room.isCurrent = true;
 
-    const tileSize = 32;
-    const startX = room.worldX;
-    const startY = room.worldY;
-    const cols = room.layout.width;
-    const rows = room.layout.height;
-
-    // 1. Build Floor
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = startX + c * tileSize + tileSize / 2;
-        const y = startY + r * tileSize + tileSize / 2;
-        const spr = this.scene.add.sprite(x, y, 'floor_tile').setDepth(1);
-        this.floorSprites.push(spr);
-      }
+    // Fade Fog of War cleanly
+    const fog = this.fogOverlays.get(roomIndex);
+    if (fog) {
+      this.scene.tweens.add({
+        targets: fog,
+        alpha: 0,
+        duration: 280,
+        onComplete: () => {
+          fog.destroy();
+          this.fogOverlays.delete(roomIndex);
+        }
+      });
     }
 
-    // 2. Build Perimeter Walls (leaving openings for doors)
-    const hasNorthDoor = room.doors.some(d => d.direction === 'north');
-    const hasSouthDoor = room.doors.some(d => d.direction === 'south');
-    const hasEastDoor = room.doors.some(d => d.direction === 'east');
-    const hasWestDoor = room.doors.some(d => d.direction === 'west');
-    const doorCol = Math.floor(cols / 2);
-    const doorRow = Math.floor(rows / 2);
-
-    // Top & Bottom walls
-    for (let c = 0; c < cols; c++) {
-      if (!hasNorthDoor || c !== doorCol) {
-        this.addWall(startX + c * tileSize, startY, tileSize, tileSize);
-      }
-      if (!hasSouthDoor || c !== doorCol) {
-        this.addWall(startX + c * tileSize, startY + (rows - 1) * tileSize, tileSize, tileSize);
-      }
-    }
-    // Left & Right walls
-    for (let r = 1; r < rows - 1; r++) {
-      if (!hasWestDoor || r !== doorRow) {
-        this.addWall(startX, startY + r * tileSize, tileSize, tileSize);
-      }
-      if (!hasEastDoor || r !== doorRow) {
-        this.addWall(startX + (cols - 1) * tileSize, startY + r * tileSize, tileSize, tileSize);
-      }
-    }
-
-    // 3. Build Internal Obstacle Walls
-    for (const w of room.layout.walls) {
-      this.addWall(startX + w.x * tileSize, startY + w.y * tileSize, tileSize, tileSize, 'pillar_tile');
-    }
-
-    // 4. Build Doors
-    this.doorColliders = [];
-    this.doorSprites = [];
-    for (const d of room.doors) {
-      const isDoorOpen = room.isCleared;
-      d.isOpen = isDoorOpen;
-      const texture = isDoorOpen ? 'door_open' : 'door_closed';
-      const spr = this.scene.add.sprite(d.x, d.y, texture).setDepth(4);
-      const hitZone = new Phaser.Geom.Rectangle(d.x - 16, d.y - 16, 32, 32);
-
-      this.doorSprites.push({ door: d, sprite: spr, hitZone });
-
-      if (!isDoorOpen) {
-        // Closed door collider blocks movement
-        this.doorColliders.push({ x: d.x - 16, y: d.y - 16, width: 32, height: 32 });
-      }
-    }
-
-    // 5. Spawn Interactive Barrels for tactical cover & chain explosions
-    if (room.type === 'combat') {
-      const bOffset = 100;
-      this.interactiveProps.spawnProp('explosive', room.worldX + bOffset, room.worldY + bOffset);
-      this.interactiveProps.spawnProp('toxic', room.worldX + room.width - bOffset, room.worldY + bOffset);
-      this.interactiveProps.spawnProp('explosive', room.worldX + room.width - bOffset, room.worldY + room.height - bOffset);
-      this.interactiveProps.spawnProp('toxic', room.worldX + bOffset, room.worldY + room.height - bOffset);
-    }
-
-    // 6. Spawn Enemies if room not yet cleared
-    if (!room.isCleared) {
+    // Spawn enemies & lock room doors if uncleared combat/boss room
+    if (!room.isCleared && !this.spawnedEnemyRooms.has(roomIndex)) {
+      this.spawnedEnemyRooms.add(roomIndex);
       this.spawnRoomEnemies(room);
-    } else if (!room.rewardSpawned) {
-      this.spawnRoomRewards(room);
+      if (room.type === 'boss') {
+        audio.playBossAlert();
+      }
     }
-
-    // 7. If Rest Room, spawn Merchant NPC & Altar
-    if (room.type === 'rest') {
-      this.spawnRestRoomMerchant(room);
-    }
-
-    // Set camera bounds to this room
-    this.scene.cameras.main.setBounds(
-      room.worldX - 32,
-      room.worldY - 32,
-      room.width + 64,
-      room.height + 64
-    );
 
     events.emit('room:entered', { room });
-  }
-
-  private addWall(x: number, y: number, w: number, h: number, texture: string = 'wall_tile'): void {
-    const spr = this.scene.add.sprite(x + w / 2, y + h / 2, texture).setDepth(3);
-    this.wallSprites.push(spr);
-    this.wallColliders.push({ x, y, width: w, height: h });
   }
 
   private spawnRoomEnemies(room: RoomState): void {
@@ -174,8 +358,11 @@ export class RoomManager {
       let enemy: EnemyBase | null = null;
       if (sp.type === 'grunt') {
         enemy = new EnemyGrunt(this.scene, worldPosX, worldPosY);
-      } else if (sp.type === 'shooter') {
+      } else if (sp.type === 'shooter' || sp.type === 'frost_mage') {
         enemy = new EnemyShooter(this.scene, worldPosX, worldPosY);
+        if (sp.type === 'frost_mage') {
+          enemy.sprite.setTexture('enemy_frost_mage');
+        }
       } else if (sp.type === 'fan_caster') {
         enemy = new EnemyFanCaster(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'charger') {
@@ -185,12 +372,15 @@ export class RoomManager {
       }
 
       if (enemy) {
+        if (sp.isElite) {
+          enemy.promoteToElite();
+        }
         this.activeEnemies.push(enemy);
       }
     }
 
     if (this.activeEnemies.length > 0) {
-      this.lockDoors();
+      this.lockRoomDoors(room.index);
     }
   }
 
@@ -199,89 +389,97 @@ export class RoomManager {
     playerX: number,
     playerY: number,
     pool: ProjectilePool,
-    onRoomTransition: (targetRoomIdx: number, targetSpawnX: number, targetSpawnY: number) => void
+    onRoomEntered?: (roomIndex: number) => void
   ): void {
+    // 1. Animate torches
+    this.torchTimer += deltaSec;
+    if (this.torchTimer >= 0.18) {
+      this.torchTimer = 0;
+      this.torchFrame = !this.torchFrame;
+      const key = this.torchFrame ? 'torch_2' : 'torch_1';
+      for (const ts of this.torchSprites) {
+        ts.setTexture(key);
+      }
+    }
+
+    // 2. Cycle floor spike traps (1.4s down -> 0.8s up)
+    this.trapCycleTimer += deltaSec;
+    const cyclePos = this.trapCycleTimer % 2.2;
+    const nextTrapState = cyclePos >= 1.4;
+    if (nextTrapState !== this.areTrapsActive) {
+      this.areTrapsActive = nextTrapState;
+      const tex = this.areTrapsActive ? 'trap_up' : 'trap_down';
+      for (const tr of this.spikeTraps) {
+        tr.sprite.setTexture(tex);
+      }
+    }
+
+    // 3. Detect player seamlessly entering any room interior (46px clear of walls/doors so gates never trap player)
+    for (const r of this.rooms) {
+      if (
+        playerX >= r.worldX + 46 &&
+        playerX <= r.worldX + r.width - 46 &&
+        playerY >= r.worldY + 46 &&
+        playerY <= r.worldY + r.height - 46
+      ) {
+        if (r.index !== this.currentRoomIndex) {
+          this.enterRoom(r.index);
+          if (onRoomEntered) onRoomEntered(r.index);
+        }
+        break;
+      }
+    }
+
     const curRoom = this.getCurrentRoom();
-    const allBlockers = [...this.wallColliders, ...this.doorColliders];
+    const allBlockers = [...this.staticWallColliders, ...this.doorColliders, ...this.interactiveProps.getObstacleColliders()];
     const roomBounds = {
-      minX: curRoom.worldX + 36,
-      maxX: curRoom.worldX + curRoom.width - 36,
-      minY: curRoom.worldY + 36,
-      maxY: curRoom.worldY + curRoom.height - 36
+      minX: curRoom.worldX + 40,
+      maxX: curRoom.worldX + curRoom.width - 40,
+      minY: curRoom.worldY + 40,
+      maxY: curRoom.worldY + curRoom.height - 40
     };
 
-    // 1. Update active enemies
+    // 4. Update active enemies
     for (let i = this.activeEnemies.length - 1; i >= 0; i--) {
       const enemy = this.activeEnemies[i];
       if (enemy.isDead) {
-        // Chance to spawn energy/heart drop on enemy death
-        this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y);
+        this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y, enemy.isElite);
         this.activeEnemies.splice(i, 1);
         continue;
       }
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
     }
 
-    // 2. Check room clear condition
-    if (!curRoom.isCleared && this.activeEnemies.length === 0) {
+    // 5. Check room clear condition
+    if (!curRoom.isCleared && this.activeEnemies.length === 0 && this.spawnedEnemyRooms.has(curRoom.index)) {
       curRoom.isCleared = true;
       audio.playRoomClear();
-      this.unlockDoors();
+      this.unlockRoomDoors(curRoom.index);
       this.spawnRoomRewards(curRoom);
       events.emit('room:cleared', { room: curRoom });
     }
-
-    // 3. Check door trigger overlaps
-    for (const ds of this.doorSprites) {
-      if (ds.door.isOpen) {
-        const dist = Math.hypot(playerX - ds.door.x, playerY - ds.door.y);
-        if (dist < 40) {
-          // Transition to adjacent room
-          const targetIdx = ds.door.targetRoomIndex;
-          const targetRoom = this.rooms[targetIdx];
-          // Find opposite door in target room
-          let spawnX = targetRoom.worldX + targetRoom.width / 2;
-          let spawnY = targetRoom.worldY + targetRoom.height / 2;
-
-          for (const targetDoor of targetRoom.doors) {
-            if (targetDoor.targetRoomIndex === this.currentRoomIndex) {
-              // Offset spawn 65px inward from door to avoid immediately re-triggering door
-              if (targetDoor.direction === 'north') {
-                spawnX = targetDoor.x;
-                spawnY = targetDoor.y + 65;
-              } else if (targetDoor.direction === 'south') {
-                spawnX = targetDoor.x;
-                spawnY = targetDoor.y - 65;
-              } else if (targetDoor.direction === 'east') {
-                spawnX = targetDoor.x - 65;
-                spawnY = targetDoor.y;
-              } else if (targetDoor.direction === 'west') {
-                spawnX = targetDoor.x + 65;
-                spawnY = targetDoor.y;
-              }
-              break;
-            }
-          }
-
-          onRoomTransition(targetIdx, spawnX, spawnY);
-          break;
-        }
-      }
-    }
   }
 
-  private rollEnemyDrop(x: number, y: number): void {
-    // 1. Guaranteed coin drop (Soul Knight gold drop mechanic)
-    const coinCount = Math.random() < 0.35 ? 2 : 1;
+  public isPlayerOnActiveTrap(px: number, py: number): boolean {
+    if (!this.areTrapsActive) return false;
+    for (const tr of this.spikeTraps) {
+      if (Math.abs(px - tr.x) < 14 && Math.abs(py - tr.y) < 14) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private rollEnemyDrop(x: number, y: number, isElite: boolean = false): void {
+    const coinCount = isElite ? 4 : Math.random() < 0.4 ? 2 : 1;
     for (let c = 0; c < coinCount; c++) {
-      this.spawnPickup('coin', x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20, 1);
+      this.spawnPickup('coin', x + (Math.random() - 0.5) * 22, y + (Math.random() - 0.5) * 22, 1);
     }
 
-    // 2. Chance for recovery supplies
     const roll = Math.random();
-    if (roll < 0.22) {
+    if (roll < (isElite ? 0.5 : 0.24)) {
       this.spawnPickup('energy', x, y, 25);
-    } else if (roll < 0.32) {
+    } else if (roll < (isElite ? 0.85 : 0.35)) {
       this.spawnPickup('heart', x, y, 2);
     }
   }
@@ -293,12 +491,10 @@ export class RoomManager {
     const centerX = room.worldX + room.width / 2;
     const centerY = room.worldY + room.height / 2;
 
-    // Mysterious Alchemist Merchant NPC with shadow
     const shadow = this.scene.add.sprite(centerX, centerY - 52, 'shadow').setDepth(4);
     const merchant = this.scene.add.sprite(centerX, centerY - 62, 'merchant_npc').setDepth(5).setScale(1.2);
     this.merchantSprites.push(shadow, merchant);
 
-    // Shop item 1: Large Health Potion (+4 HP) for 15 Gold
     this.spawnPickup(
       'shop_item',
       centerX - 80,
@@ -308,7 +504,6 @@ export class RoomManager {
       'Bình Huyết Thạch (+4 HP) [15 Vàng]'
     );
 
-    // Shop item 2: Large Energy Potion (+100 NL) for 10 Gold
     this.spawnPickup(
       'shop_item',
       centerX,
@@ -318,17 +513,17 @@ export class RoomManager {
       'Bình Linh Lực (+100 NL) [10 Vàng]'
     );
 
-    // Shop item 3: Rare Blade for 30 Gold
+    const shopWeapons = [WEAPONS.bow, WEAPONS.laser, WEAPONS.staff, WEAPONS.blade];
+    const picked = shopWeapons[Math.floor(Math.random() * shopWeapons.length)];
     this.spawnPickup(
       'shop_item',
       centerX + 80,
       centerY - 10,
-      { subType: 'weapon', weapon: WEAPONS.blade },
-      30,
-      'Đoản Kiếm Phản Đạn [30 Vàng]'
+      { subType: 'weapon', weapon: picked },
+      28,
+      `${picked.nameVi} [28 Vàng]`
     );
 
-    // Altar for free upgrade choice!
     this.spawnPickup('altar', centerX, centerY + 65);
   }
 
@@ -340,19 +535,18 @@ export class RoomManager {
     const centerY = room.worldY + room.height / 2;
 
     if (room.type === 'treasure') {
-      // Guaranteed weapon chest + coins
-      this.spawnPickup('chest', centerX, centerY);
-      this.spawnPickup('coin', centerX - 25, centerY + 25, 3);
-      this.spawnPickup('coin', centerX + 25, centerY + 25, 3);
-      this.spawnPickup('heart', centerX - 60, centerY, 3);
-      this.spawnPickup('energy', centerX + 60, centerY, 60);
+      this.spawnPickup('chest', centerX - 35, centerY);
+      this.spawnPickup('statue', centerX + 45, centerY, { cost: 12 }, 12, 'Tượng Thần Cổ Xưa [12 Vàng]');
+      this.spawnPickup('coin', centerX - 35, centerY + 35, 3);
+      this.spawnPickup('heart', centerX - 80, centerY, 3);
+      this.spawnPickup('energy', centerX + 90, centerY, 60);
     } else if (room.type === 'rest') {
       this.spawnRestRoomMerchant(room);
+    } else if (room.type === 'boss') {
+      this.spawnPickup('portal', centerX, centerY);
     } else if (room.index === 2 || room.index === 5) {
-      // Altar after Combat 2 and Combat 4
       this.spawnPickup('altar', centerX, centerY);
     } else if (room.type === 'combat') {
-      // Combat reward drops
       this.spawnPickup('energy', centerX - 30, centerY, 40);
       this.spawnPickup('heart', centerX + 30, centerY, 2);
       this.spawnPickup('coin', centerX, centerY, 2);
@@ -360,7 +554,7 @@ export class RoomManager {
   }
 
   public spawnPickup(
-    type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item',
+    type: PickupItem['type'],
     x: number,
     y: number,
     data?: any,
@@ -372,6 +566,8 @@ export class RoomManager {
     else if (type === 'coin') texture = 'pickup_coin';
     else if (type === 'chest') texture = 'chest_closed';
     else if (type === 'altar') texture = 'upgrade_altar';
+    else if (type === 'statue') texture = 'statue_alchemist';
+    else if (type === 'portal') texture = 'portal_1';
     else if (type === 'weapon') texture = (data as WeaponData)?.iconTexture || 'icon_shotgun';
     else if (type === 'shop_item') {
       if (data?.subType === 'heal') texture = 'potion_health_large';
@@ -381,8 +577,17 @@ export class RoomManager {
 
     const spr = this.scene.add.sprite(x, y, texture).setDepth(6);
 
-    // Floating bobbing tween for items
-    if (type !== 'chest' && type !== 'altar') {
+    if (type === 'portal') {
+      this.scene.tweens.add({
+        targets: spr,
+        scaleX: 1.12,
+        scaleY: 1.12,
+        duration: 600,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    } else if (type !== 'chest' && type !== 'altar' && type !== 'statue') {
       this.scene.tweens.add({
         targets: spr,
         y: y - 5,
@@ -396,32 +601,36 @@ export class RoomManager {
     this.pickups.push({ type, sprite: spr, data, price, label });
   }
 
-  public lockDoors(): void {
+  public lockRoomDoors(roomIndex: number): void {
     this.doorColliders = [];
-    for (const ds of this.doorSprites) {
-      ds.door.isOpen = false;
-      ds.sprite.setTexture('door_closed');
-      this.doorColliders.push({ x: ds.door.x - 16, y: ds.door.y - 16, width: 32, height: 32 });
+    const groups = this.roomDoorsMap.get(roomIndex) || [];
+    for (const g of groups) {
+      g.door.isOpen = false;
+      for (const s of g.sprites) s.setTexture('door_closed');
+      this.doorColliders.push(...g.colliders);
     }
     events.emit('room:doors-locked');
   }
 
-  public unlockDoors(): void {
+  public unlockRoomDoors(roomIndex: number): void {
     this.doorColliders = [];
-    for (const ds of this.doorSprites) {
-      ds.door.isOpen = true;
-      ds.sprite.setTexture('door_open');
+    const groups = this.roomDoorsMap.get(roomIndex) || [];
+    for (const g of groups) {
+      g.door.isOpen = true;
+      for (const s of g.sprites) s.setTexture('door_open');
     }
     events.emit('room:doors-unlocked');
   }
 
   public clearCurrentRoomVisuals(): void {
-    for (const spr of this.floorSprites) spr.destroy();
-    this.floorSprites = [];
-    for (const spr of this.wallSprites) spr.destroy();
-    this.wallSprites = [];
-    for (const ds of this.doorSprites) ds.sprite.destroy();
-    this.doorSprites = [];
+    for (const obj of this.worldObjects) obj.destroy();
+    this.worldObjects = [];
+    this.fogOverlays.clear();
+    this.roomDoorsMap.clear();
+    this.spawnedEnemyRooms.clear();
+    this.torchSprites = [];
+    this.spikeTraps = [];
+    this.staticWallColliders = [];
     this.wallColliders = [];
     this.doorColliders = [];
     for (const e of this.activeEnemies) e.destroy();

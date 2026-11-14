@@ -1,6 +1,14 @@
-export type WeaponId = 'pistol' | 'shotgun' | 'repeater' | 'penetrator' | 'blade';
+export type WeaponId =
+  | 'pistol'
+  | 'shotgun'
+  | 'repeater'
+  | 'penetrator'
+  | 'blade'
+  | 'bow'
+  | 'laser'
+  | 'staff';
 
-export type WeaponCategory = 'gun' | 'melee';
+export type WeaponCategory = 'gun' | 'melee' | 'bow' | 'beam';
 
 export interface WeaponData {
   id: WeaponId;
@@ -20,7 +28,10 @@ export interface WeaponData {
   bulletColor: number;
   bulletTexture: string;
   iconTexture: string;
+  handTexture: string;
   recoil: number;
   screenShake: number;
+  chargeTime?: number; // for charge bows (seconds)
+  isHoming?: boolean;
   descriptionVi: string;
 }

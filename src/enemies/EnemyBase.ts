@@ -15,11 +15,13 @@ export abstract class EnemyBase implements EntityWithStatus {
   public maxHp: number;
   public speed: number;
   public isDead: boolean = false;
+  public isElite: boolean = false;
   public statusEffects: Map<string, StatusEffect> = new Map();
 
   protected hitFlashTimer: number = 0;
   protected knockbackVx: number = 0;
   protected knockbackVy: number = 0;
+  protected eliteAura: Phaser.GameObjects.Graphics | null = null;
 
   get x(): number { return this.sprite.x; }
   get y(): number { return this.sprite.y; }
@@ -33,6 +35,23 @@ export abstract class EnemyBase implements EntityWithStatus {
 
     this.shadow = scene.add.sprite(x, y + 8, 'shadow').setDepth(7);
     this.sprite = scene.add.sprite(x, y, texture).setDepth(8);
+  }
+
+  public promoteToElite(): void {
+    if (this.isElite) return;
+    this.isElite = true;
+    this.maxHp = Math.ceil(this.maxHp * 2.4);
+    this.hp = this.maxHp;
+    this.speed *= 1.15;
+    this.sprite.setScale(1.38);
+    this.shadow.setScale(1.35);
+
+    this.eliteAura = this.scene.add.graphics().setDepth(6);
+    this.eliteAura.lineStyle(2, 0xf59e0b, 0.9);
+    this.eliteAura.strokeCircle(0, 0, 17);
+    this.eliteAura.fillStyle(0xef4444, 0.22);
+    this.eliteAura.fillCircle(0, 0, 17);
+    this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
   }
 
   public takeDamage(damage: DamageInfo): DamageResult {
@@ -181,6 +200,9 @@ export abstract class EnemyBase implements EntityWithStatus {
     // Facing direction
     this.sprite.setFlipX(playerX < this.sprite.x);
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 8);
+    if (this.eliteAura) {
+      this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
+    }
   }
 
   protected moveTowardsWithObstacleAvoidance(
@@ -241,5 +263,9 @@ export abstract class EnemyBase implements EntityWithStatus {
   public destroy(): void {
     this.sprite.destroy();
     this.shadow.destroy();
+    if (this.eliteAura) {
+      this.eliteAura.destroy();
+      this.eliteAura = null;
+    }
   }
 }

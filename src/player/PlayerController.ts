@@ -75,9 +75,16 @@ export class PlayerController {
   private slashSprite: Phaser.GameObjects.Sprite | null = null;
   private slashTimer: number = 0;
 
+  // Held weapon & muzzle flash (360-degree aim)
+  private weaponSprite: Phaser.GameObjects.Sprite;
+  private muzzleFlashSprite: Phaser.GameObjects.Sprite;
+  private weaponRecoilOffset: number = 0;
+  private muzzleFlashTimer: number = 0;
+
   // Animation walk cycle
   private animTimer: number = 0;
   private animFrame: number = 0;
+  private dustTimer: number = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
@@ -106,6 +113,10 @@ export class PlayerController {
 
     // Slash sprite
     this.slashSprite = scene.add.sprite(0, 0, 'slash_arc').setDepth(14).setVisible(false);
+
+    // Held weapon sprite & muzzle flash
+    this.weaponSprite = scene.add.sprite(x + 12, y + 3, this.getCurrentWeapon().handTexture).setDepth(12);
+    this.muzzleFlashSprite = scene.add.sprite(x, y, 'muzzle_flash').setDepth(13).setVisible(false);
 
     // Notify initial state
     this.emitStats();
@@ -373,6 +384,42 @@ export class PlayerController {
     // Update shadow position
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 11);
 
+    // Subtle footstep dust when moving
+    if (moveLen > 0 && !this.isDashing) {
+      this.dustTimer += deltaSec;
+      if (this.dustTimer >= 0.16) {
+        this.dustTimer = 0;
+        const dust = this.scene.add.rectangle(this.sprite.x, this.sprite.y + 11, 4, 3, 0x64748b, 0.5).setDepth(8);
+        this.scene.tweens.add({
+          targets: dust,
+          y: dust.y - 4,
+          alpha: 0,
+          duration: 220,
+          onComplete: () => dust.destroy()
+        });
+      }
+    }
+
+    // Update 360-degree held weapon & recoil spring
+    this.weaponRecoilOffset = Phaser.Math.Linear(this.weaponRecoilOffset, 0, Math.min(1, deltaSec * 18));
+    const holdRadius = Math.max(4, 12 - this.weaponRecoilOffset);
+    const wx = this.sprite.x + Math.cos(aimAngle) * holdRadius;
+    const wy = this.sprite.y + 3 + Math.sin(aimAngle) * holdRadius;
+    this.weaponSprite.setPosition(wx, wy);
+    this.weaponSprite.setRotation(aimAngle);
+    this.weaponSprite.setFlipY(Math.cos(aimAngle) < 0);
+    this.weaponSprite.setVisible(this.sprite.visible);
+
+    if (this.muzzleFlashTimer > 0) {
+      this.muzzleFlashTimer -= deltaSec;
+      const mx = this.sprite.x + Math.cos(aimAngle) * (holdRadius + 13);
+      const my = this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius + 13);
+      this.muzzleFlashSprite.setPosition(mx, my);
+      if (this.muzzleFlashTimer <= 0) {
+        this.muzzleFlashSprite.setVisible(false);
+      }
+    }
+
     // Update slash sprite timer
     if (this.slashTimer > 0) {
       this.slashTimer -= deltaSec;
@@ -466,17 +513,26 @@ export class PlayerController {
         }
       }
 
-      // Emit melee hit check to room enemies
-      events.emit('combat:enemy-hit', {
-        enemyId: 'melee_sweep',
+      // Emit real melee swing hit check to MainScene
+      this.weaponRecoilOffset = -8; // Sword swings forward!
+      events.emit('player:melee-swing', {
+        x: this.sprite.x,
+        y: this.sprite.y,
+        angle: aimAngle,
+        radius,
+        arcDeg: arcDegrees,
         damage: (weapon.damage + bladeBonus) * damageMultiplier,
-        isCrit,
-        x: this.sprite.x + Math.cos(aimAngle) * 28,
-        y: this.sprite.y + Math.sin(aimAngle) * 28
+        isCrit
       });
 
       return;
     }
+
+    // Gun recoil & muzzle flash
+    this.weaponRecoilOffset = Math.min(8, weapon.recoil || 3);
+    this.muzzleFlashTimer = 0.055;
+    this.muzzleFlashSprite.setVisible(true);
+    this.muzzleFlashSprite.setRotation(aimAngle);
 
     // Gun attack
     switch (weapon.id) {
@@ -491,6 +547,9 @@ export class PlayerController {
         break;
       case 'penetrator':
         audio.playShootPenetrator();
+        break;
+      default:
+        audio.playShootPistol();
         break;
     }
 
@@ -603,8 +662,12 @@ export class PlayerController {
   }
 
   private emitWeaponChange(): void {
+    const cur = this.getCurrentWeapon();
+    if (this.weaponSprite) {
+      this.weaponSprite.setTexture(cur.handTexture);
+    }
     events.emit('player:weapon-swapped', {
-      current: this.getCurrentWeapon(),
+      current: cur,
       secondary: this.getSecondaryWeapon(),
       activeIndex: this.activeSlotIndex
     });
@@ -613,6 +676,8 @@ export class PlayerController {
   public destroy(): void {
     this.sprite.destroy();
     this.shadow.destroy();
+    if (this.weaponSprite) this.weaponSprite.destroy();
+    if (this.muzzleFlashSprite) this.muzzleFlashSprite.destroy();
     if (this.slashSprite) this.slashSprite.destroy();
   }
 }

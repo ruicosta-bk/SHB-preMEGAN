@@ -6,9 +6,11 @@ import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { StatusManager } from '../combat/StatusManager';
 
+export type PropType = 'explosive' | 'toxic' | 'crate';
+
 export interface PropData {
   id: string;
-  type: 'explosive' | 'toxic';
+  type: PropType;
   x: number;
   y: number;
   hp: number;
@@ -26,19 +28,26 @@ export class InteractiveProps {
     this.scene = scene;
   }
 
-  public spawnProp(type: 'explosive' | 'toxic', x: number, y: number): PropData {
-    const id = 'prop_' + Math.random().toString(36).substr(2, 9);
-    const texture = type === 'explosive' ? 'barrel_explosive' : 'barrel_toxic';
+  public spawnProp(type: PropType, x: number, y: number): PropData {
+    const id = 'prop_' + Math.random().toString(36).slice(2, 9);
+    const texture =
+      type === 'explosive'
+        ? 'barrel_explosive'
+        : type === 'toxic'
+          ? 'barrel_toxic'
+          : 'crate_wood';
+
     const shadow = this.scene.add.sprite(x, y + 10, 'shadow').setDepth(4);
     const sprite = this.scene.add.sprite(x, y, texture).setDepth(5);
 
+    const hp = type === 'crate' ? 6 : type === 'explosive' ? 10 : 8;
     const prop: PropData = {
       id,
       type,
       x,
       y,
-      hp: type === 'explosive' ? 10 : 8,
-      maxHp: type === 'explosive' ? 10 : 8,
+      hp,
+      maxHp: hp,
       isDestroyed: false,
       sprite,
       shadow
@@ -63,22 +72,55 @@ export class InteractiveProps {
     prop: PropData,
     damage: DamageInfo,
     pool: ProjectilePool,
-    enemies: EnemyBase[]
+    enemies: EnemyBase[],
+    onCrateBreak?: (x: number, y: number) => void
   ): boolean {
     if (prop.isDestroyed) return false;
 
     prop.hp -= damage.amount;
     prop.sprite.setTint(0xffffff);
-    this.scene.time.delayedCall(80, () => {
+    this.scene.time.delayedCall(70, () => {
       if (!prop.isDestroyed) prop.sprite.clearTint();
     });
 
     if (prop.hp <= 0) {
-      this.detonateProp(prop, pool, enemies);
+      if (prop.type === 'crate') {
+        this.breakCrate(prop, onCrateBreak);
+      } else {
+        this.detonateProp(prop, pool, enemies);
+      }
       return true;
     }
 
     return false;
+  }
+
+  private breakCrate(prop: PropData, onCrateBreak?: (x: number, y: number) => void): void {
+    if (prop.isDestroyed) return;
+    prop.isDestroyed = true;
+
+    audio.playGlassBreak();
+    // Wood splinter particles
+    for (let i = 0; i < 6; i++) {
+      const chip = this.scene.add.rectangle(prop.x, prop.y, 4, 4, 0xb45309).setDepth(15);
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 25 + Math.random() * 30;
+      this.scene.tweens.add({
+        targets: chip,
+        x: prop.x + Math.cos(ang) * spd,
+        y: prop.y + Math.sin(ang) * spd,
+        alpha: 0,
+        duration: 280,
+        onComplete: () => chip.destroy()
+      });
+    }
+
+    if (onCrateBreak) {
+      onCrateBreak(prop.x, prop.y);
+    }
+
+    prop.sprite.destroy();
+    prop.shadow.destroy();
   }
 
   public detonateProp(prop: PropData, pool: ProjectilePool, enemies: EnemyBase[]): void {
@@ -86,15 +128,13 @@ export class InteractiveProps {
     prop.isDestroyed = true;
 
     audio.playExplosion();
-    this.scene.cameras.main.shake(250, 0.015);
+    this.scene.cameras.main.shake(240, 0.015);
 
     const explosionRadius = prop.type === 'explosive' ? 85 : 70;
     const damage = prop.type === 'explosive' ? 24 : 14;
 
-    // Destroy enemy bullets in explosion
     pool.destroyEnemyBulletsInRadius(prop.x, prop.y, explosionRadius);
 
-    // Damage and apply status to nearby enemies
     for (const enemy of enemies) {
       if (enemy.isDead) continue;
       const dist = Math.hypot(enemy.sprite.x - prop.x, enemy.sprite.y - prop.y);
@@ -115,7 +155,6 @@ export class InteractiveProps {
           isPlayerAttack: true
         });
 
-        // Apply status
         if (prop.type === 'explosive') {
           StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
         } else {
@@ -124,7 +163,6 @@ export class InteractiveProps {
       }
     }
 
-    // Visual explosion shockwave graphic
     const fx = this.scene.add.graphics().setDepth(20);
     const fxColor = prop.type === 'explosive' ? 0xf59e0b : 0x22c55e;
     fx.fillStyle(fxColor, 0.85);
@@ -144,7 +182,6 @@ export class InteractiveProps {
 
     events.emit('combat:explosion', { x: prop.x, y: prop.y, radius: explosionRadius, damage });
 
-    // Destroy prop sprite
     prop.sprite.destroy();
     prop.shadow.destroy();
   }

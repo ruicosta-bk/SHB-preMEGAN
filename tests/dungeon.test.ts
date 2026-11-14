@@ -69,4 +69,29 @@ describe('DungeonGenerator Unit Tests', () => {
       expect(run1[i].doors.length).toBe(run2[i].doors.length);
     }
   });
+
+  it('generates valid seamless 3-tile corridors connecting all rooms without room overlap', () => {
+    const rooms = DungeonGenerator.generateFloor(2026);
+    const corridors = DungeonGenerator.generateCorridors(rooms);
+
+    // A tree of 8 rooms has 7 unique bidirectional corridors
+    expect(corridors.length).toBe(7);
+    for (const c of corridors) {
+      expect(c.width).toBeGreaterThan(0);
+      expect(c.height).toBeGreaterThan(0);
+      expect(c.floorTiles.length).toBeGreaterThan(0);
+      expect(c.wallRects.length).toBe(2);
+    }
+
+    // Verify no two rooms overlap in world coordinates
+    for (let i = 0; i < rooms.length; i++) {
+      for (let j = i + 1; j < rooms.length; j++) {
+        const a = rooms[i];
+        const b = rooms[j];
+        const overlapX = a.worldX < b.worldX + b.width && a.worldX + a.width > b.worldX;
+        const overlapY = a.worldY < b.worldY + b.height && a.worldY + a.height > b.worldY;
+        expect(overlapX && overlapY).toBe(false);
+      }
+    }
+  });
 });

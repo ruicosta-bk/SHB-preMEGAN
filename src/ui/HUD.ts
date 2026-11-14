@@ -287,30 +287,77 @@ export class HUD {
 
   public renderMinimap(rooms: RoomState[], currentIdx: number): void {
     this.minimapGraphics.clear();
-    const originX = 1108;
-    const originY = 32;
-    const cellW = 24;
-    const cellH = 18;
-    const pad = 4;
+    if (!rooms || rooms.length === 0) return;
 
-    for (const r of rooms) {
-      if (!r.isVisited && r.index !== 0) continue; // Fog of war
+    // Minimap panel is (1090, 16, 175, 125)
+    const boxCenterX = 1090 + 175 / 2;
+    const boxCenterY = 16 + 125 / 2;
 
-      const px = originX + r.gridX * (cellW + pad);
-      const py = originY + r.gridY * (cellH + pad);
+    const visibleRooms = rooms.filter(r => r.isVisited || r.index === 0 || r.type === 'boss');
+    let minGX = Infinity;
+    let maxGX = -Infinity;
+    let minGY = Infinity;
+    let maxGY = -Infinity;
+    for (const r of visibleRooms) {
+      if (r.gridX < minGX) minGX = r.gridX;
+      if (r.gridX > maxGX) maxGX = r.gridX;
+      if (r.gridY < minGY) minGY = r.gridY;
+      if (r.gridY > maxGY) maxGY = r.gridY;
+    }
+
+    const spanX = Math.max(1, maxGX - minGX + 1);
+    const spanY = Math.max(1, maxGY - minGY + 1);
+    const maxStepX = Math.floor(148 / spanX);
+    const maxStepY = Math.floor(100 / spanY);
+    const step = Math.max(16, Math.min(28, Math.min(maxStepX, maxStepY)));
+    const cellW = Math.floor(step * 0.68);
+    const cellH = Math.floor(step * 0.56);
+
+    const gridWidthPx = (maxGX - minGX) * step + cellW;
+    const gridHeightPx = (maxGY - minGY) * step + cellH;
+    const originX = boxCenterX - gridWidthPx / 2;
+    const originY = boxCenterY - gridHeightPx / 2;
+
+    const posOf = (r: RoomState) => ({
+      x: originX + (r.gridX - minGX) * step,
+      y: originY + (r.gridY - minGY) * step
+    });
+
+    // Draw connecting corridor lines first
+    this.minimapGraphics.lineStyle(2, 0x64748b, 0.75);
+    const visibleSet = new Set(visibleRooms.map(r => r.index));
+    for (const r of visibleRooms) {
+      const p1 = posOf(r);
+      for (const d of r.doors) {
+        if (!visibleSet.has(d.targetRoomIndex) || d.targetRoomIndex < r.index) continue;
+        const target = rooms[d.targetRoomIndex];
+        if (!target) continue;
+        const p2 = posOf(target);
+        this.minimapGraphics.beginPath();
+        this.minimapGraphics.moveTo(p1.x + cellW / 2, p1.y + cellH / 2);
+        this.minimapGraphics.lineTo(p2.x + cellW / 2, p2.y + cellH / 2);
+        this.minimapGraphics.strokePath();
+      }
+    }
+
+    // Draw room nodes
+    for (const r of visibleRooms) {
+      const { x: px, y: py } = posOf(r);
 
       let color = 0x475569;
       if (r.index === currentIdx) {
         color = 0x38bdf8; // Bright cyan for player
-      } else if (r.isCleared) {
-        color = 0x22c55e; // Green for cleared
-      } else if (r.type === 'treasure') {
-        color = 0xf59e0b; // Gold
       } else if (r.type === 'boss') {
         color = 0xef4444; // Red for boss
+      } else if (r.type === 'treasure') {
+        color = 0xf59e0b; // Gold
+      } else if (r.type === 'rest') {
+        color = 0xa855f7; // Purple shop/rest
+      } else if (r.isCleared) {
+        color = 0x22c55e; // Green for cleared
       }
 
-      this.minimapGraphics.fillStyle(color, 0.85);
+      this.minimapGraphics.fillStyle(color, r.isVisited ? 0.9 : 0.45);
       this.minimapGraphics.fillRoundedRect(px, py, cellW, cellH, 3);
 
       if (r.index === currentIdx) {

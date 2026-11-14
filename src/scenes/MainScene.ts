@@ -71,10 +71,10 @@ export class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-B', () => {
       if (this.isGameRunning && this.roomManager) {
         console.log('[DEBUG] Teleporting to Boss Room for verification...');
-        const bossRoom = this.roomManager.rooms[7];
+        const bossRoom = this.roomManager.rooms.find(r => r.type === 'boss') || this.roomManager.rooms[this.roomManager.rooms.length - 1];
         const spawnX = bossRoom.worldX + bossRoom.width / 2;
         const spawnY = bossRoom.worldY + bossRoom.height / 2;
-        this.transitionToRoom(7, spawnX, spawnY);
+        this.transitionToRoom(bossRoom.index, spawnX, spawnY);
       }
     });
 
@@ -91,15 +91,67 @@ export class MainScene extends Phaser.Scene {
     events.on('combat:enemy-died', (data: any) => {
       this.enemiesDefeated++;
       if (data.type === 'boss_ignis') {
-        // Boss drops a burst of 15 gold coins!
+        audio.playRoomClear();
+        this.cameras.main.shake(350, 0.02);
         if (this.roomManager) {
           for (let i = 0; i < 15; i++) {
-            const rx = data.x + (Math.random() - 0.5) * 80;
-            const ry = data.y + (Math.random() - 0.5) * 80;
+            const rx = data.x + (Math.random() - 0.5) * 90;
+            const ry = data.y + (Math.random() - 0.5) * 90;
             this.roomManager.spawnPickup('coin', rx, ry, 1);
           }
+          this.floatingNumbers.showNotice(data.x, data.y - 30, 'CỔNG DỊCH CHUYỂN ĐÃ MỞ!', '#38bdf8');
         }
-        this.handleVictory();
+      }
+    });
+
+    events.on('player:melee-swing', (data: {
+      x: number;
+      y: number;
+      angle: number;
+      radius: number;
+      arcDeg: number;
+      damage: number;
+      isCrit: boolean;
+    }) => {
+      if (!this.roomManager) return;
+      const halfArcRad = Phaser.Math.DegToRad(data.arcDeg / 2);
+
+      // Damage enemies in swing arc
+      for (const enemy of this.roomManager.activeEnemies) {
+        if (enemy.isDead) continue;
+        const dx = enemy.sprite.x - data.x;
+        const dy = enemy.sprite.y - data.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= data.radius + 14) {
+          const angleToEnemy = Math.atan2(dy, dx);
+          const diff = Math.abs(Phaser.Math.Angle.Wrap(angleToEnemy - data.angle));
+          if (diff <= halfArcRad || dist < 24) {
+            const len = dist || 1;
+            enemy.takeDamage({
+              amount: data.damage,
+              isCrit: data.isCrit,
+              knockback: { x: dx / len, y: dy / len, force: 210 },
+              isPlayerAttack: true
+            });
+          }
+        }
+      }
+
+      // Break crates & barrels in melee swing arc
+      if (this.roomManager.interactiveProps) {
+        for (const prop of this.roomManager.interactiveProps.props) {
+          if (prop.isDestroyed) continue;
+          const dist = Math.hypot(prop.x - data.x, prop.y - data.y);
+          if (dist <= data.radius + 10) {
+            this.roomManager.interactiveProps.damageProp(
+              prop,
+              { amount: data.damage, isCrit: data.isCrit, isPlayerAttack: true },
+              this.projectilePool,
+              this.roomManager.activeEnemies,
+              (cx, cy) => this.spawnCrateLoot(cx, cy)
+            );
+          }
+        }
       }
     });
 
@@ -136,7 +188,8 @@ export class MainScene extends Phaser.Scene {
               prop,
               { amount: data.damage, isCrit: true, isPlayerAttack: true },
               this.projectilePool,
-              this.roomManager.activeEnemies
+              this.roomManager.activeEnemies,
+              (cx, cy) => this.spawnCrateLoot(cx, cy)
             );
           }
         }
@@ -173,9 +226,10 @@ export class MainScene extends Phaser.Scene {
       this.player.destroy();
     }
 
-    // Generate fresh dungeon floor
+    // Generate fresh seamless dungeon floor + corridors
     const floorRooms = DungeonGenerator.generateFloor(this.seed);
-    this.roomManager = new RoomManager(this, floorRooms);
+    const corridors = DungeonGenerator.generateCorridors(floorRooms);
+    this.roomManager = new RoomManager(this, floorRooms, corridors);
 
     // Spawn player in center of start room (Room 0)
     const startRoom = floorRooms[0];
@@ -184,8 +238,8 @@ export class MainScene extends Phaser.Scene {
 
     this.player = new PlayerController(this, playerSpawnX, playerSpawnY);
 
-    // Build start room
-    this.roomManager.buildRoom(0);
+    // Build entire connected dungeon floor
+    this.roomManager.buildEntireFloor();
 
     if (this.uiScene && this.uiScene.hud) {
       this.uiScene.hud.renderMinimap(floorRooms, 0);
@@ -248,8 +302,7 @@ export class MainScene extends Phaser.Scene {
 
     const pointer = this.input.activePointer;
 
-    const propObstacles = this.roomManager.interactiveProps ? this.roomManager.interactiveProps.getObstacleColliders() : [];
-    const allWallsAndProps = [...this.roomManager.wallColliders, ...propObstacles];
+    const allWallsAndProps = this.roomManager.getAllSolidColliders();
 
     // 1. Update Player
     this.player.update(
@@ -260,6 +313,14 @@ export class MainScene extends Phaser.Scene {
       this.roomManager.doorColliders
     );
 
+    // 1b. Floor Spike Trap Damage
+    if (this.roomManager.isPlayerOnActiveTrap(this.player.sprite.x, this.player.sprite.y)) {
+      const trapHit = this.player.takeDamage({ amount: 1, isPlayerAttack: false });
+      if (trapHit !== null) {
+        this.cameras.main.shake(120, 0.007);
+      }
+    }
+
     // 2. Camera slight lookahead towards mouse
     const cam = this.cameras.main;
     const lookX = this.player.sprite.x + (pointer.worldX - this.player.sprite.x) * 0.18;
@@ -269,19 +330,21 @@ export class MainScene extends Phaser.Scene {
       Phaser.Math.Linear(cam.midPoint.y, lookY, 0.08)
     );
 
-    // 3. Update Room Manager (Enemies AI, Room Clear, Door Triggers)
+    // 3. Update Room Manager (Enemies AI, Room Clear, Seamless Room Transitions)
     this.roomManager.update(
       deltaSec,
       this.player.sprite.x,
       this.player.sprite.y,
       this.projectilePool,
-      (targetRoomIdx, spawnX, spawnY) => {
-        this.transitionToRoom(targetRoomIdx, spawnX, spawnY);
+      (roomIdx) => {
+        if (this.uiScene && this.uiScene.hud) {
+          this.uiScene.hud.renderMinimap(this.roomManager.rooms, roomIdx);
+        }
       }
     );
 
     // 4. Update Projectiles
-    this.projectilePool.update(deltaSec, this.roomManager.wallColliders);
+    this.projectilePool.update(deltaSec, [...allWallsAndProps, ...this.roomManager.doorColliders]);
 
     // 5. Check Projectile Collisions
     this.checkProjectileHits();
@@ -291,12 +354,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   private transitionToRoom(targetRoomIdx: number, spawnX: number, spawnY: number): void {
-    // Camera quick fade transition
-    this.cameras.main.fade(120, 11, 13, 19, false, (cam: any, progress: number) => {
+    // Camera quick fade transition (used for Debug B boss jump)
+    this.cameras.main.fade(120, 11, 13, 19, false, (_cam: any, progress: number) => {
       if (progress >= 1) {
         this.projectilePool.clearAll();
         this.player.sprite.setPosition(spawnX, spawnY);
-        this.roomManager.buildRoom(targetRoomIdx);
+        this.roomManager.enterRoom(targetRoomIdx);
         if (this.uiScene && this.uiScene.hud) {
           this.uiScene.hud.renderMinimap(this.roomManager.rooms, targetRoomIdx);
         }
@@ -360,7 +423,7 @@ export class MainScene extends Phaser.Scene {
           }
         }
 
-        // 2. Player bullet hitting interactive barrels
+        // 2. Player bullet hitting interactive barrels & crates
         if (this.roomManager.interactiveProps) {
           for (const prop of this.roomManager.interactiveProps.props) {
             if (prop.isDestroyed) continue;
@@ -370,7 +433,8 @@ export class MainScene extends Phaser.Scene {
                 prop,
                 { amount: p.damage, isCrit: p.isCrit, isPlayerAttack: true },
                 this.projectilePool,
-                this.roomManager.activeEnemies
+                this.roomManager.activeEnemies,
+                (cx, cy) => this.spawnCrateLoot(cx, cy)
               );
               this.projectilePool.deactivate(p);
               break;
@@ -432,6 +496,17 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  private spawnCrateLoot(x: number, y: number): void {
+    const roll = Math.random();
+    if (roll < 0.45) {
+      this.roomManager.spawnPickup('coin', x, y, 1);
+    } else if (roll < 0.7) {
+      this.roomManager.spawnPickup('energy', x, y, 15);
+    } else if (roll < 0.85) {
+      this.roomManager.spawnPickup('heart', x, y, 1);
+    }
+  }
+
   private updatePickupsProximity(): void {
     const px = this.player.sprite.x;
     const py = this.player.sprite.y;
@@ -458,6 +533,13 @@ export class MainScene extends Phaser.Scene {
         }
       }
 
+      // Boss Exit Portal auto-triggers victory on close overlap
+      if (p.type === 'portal' && dist < 24) {
+        this.removePickup(p);
+        this.handleVictory();
+        return;
+      }
+
       // Auto-collect hearts and energy on overlap (<24px)
       if (dist < 24) {
         if (p.type === 'heart') {
@@ -471,8 +553,8 @@ export class MainScene extends Phaser.Scene {
         }
       }
 
-      // Check interaction proximity for Chest, Altar, Weapon, Shop Item (<45px)
-      if (dist < 45 && dist < closestDist) {
+      // Check interaction proximity for Chest, Altar, Statue, Portal, Weapon, Shop Item (<48px)
+      if (dist < 48 && dist < closestDist) {
         closestDist = dist;
         this.nearestPickup = p;
       }
@@ -487,6 +569,10 @@ export class MainScene extends Phaser.Scene {
         prompt = '[E] Mở Rương Báu Cổ';
       } else if (this.nearestPickup.type === 'altar') {
         prompt = '[E] Tiếp nhận Nâng Cấp Giả Kim';
+      } else if (this.nearestPickup.type === 'statue') {
+        prompt = `[E] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
+      } else if (this.nearestPickup.type === 'portal') {
+        prompt = '[E] Bước vào Cổng Hầm Ngục';
       } else if (this.nearestPickup.type === 'shop_item') {
         prompt = `[E] Mua: ${this.nearestPickup.label}`;
       }
@@ -517,7 +603,10 @@ export class MainScene extends Phaser.Scene {
         WEAPONS.shotgun,
         WEAPONS.repeater,
         WEAPONS.penetrator,
-        WEAPONS.blade
+        WEAPONS.blade,
+        WEAPONS.bow,
+        WEAPONS.laser,
+        WEAPONS.staff
       ];
       const selectedWeapon = Phaser.Utils.Array.GetRandom(highTierWeapons);
 
@@ -532,6 +621,23 @@ export class MainScene extends Phaser.Scene {
           this.player.applyUpgrade(selectedUpgrade.id);
         }
       });
+    } else if (p.type === 'statue') {
+      const cost = p.price || 12;
+      if (this.player.spendCoins(cost)) {
+        audio.playPickup();
+        const blessingType = Math.random() < 0.5 ? 'knight' : 'sorcerer';
+        (this.player as any).statueBlessing = blessingType;
+        this.player.heal(1, 30);
+        const nameVi = blessingType === 'knight' ? 'Phước Lành Kỵ Sĩ (Bắn đạn tỏa khi [F])' : 'Phước Lành Pháp Sư (Tên lửa đuổi khi [F])';
+        this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y - 24, nameVi, '#38bdf8');
+        this.removePickup(p);
+      } else {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
+      }
+    } else if (p.type === 'portal') {
+      this.removePickup(p);
+      this.handleVictory();
     } else if (p.type === 'shop_item') {
       const price = p.price || 10;
       if (this.player.spendCoins(price)) {
