@@ -4,6 +4,7 @@ import { WeaponData, WeaponId } from '../types/weapon';
 import { UpgradeId } from '../types/upgrade';
 import { WEAPONS } from '../data/weapons';
 import { UPGRADES } from '../data/upgrades';
+import { HEROES, HeroConfig, HeroId, shouldResetSkillOnKill } from '../data/heroes';
 import { DamageCalculator } from '../combat/DamageCalculator';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
@@ -67,9 +68,18 @@ export class PlayerController {
     esc: Phaser.Input.Keyboard.Key;
   };
 
-  // Skill state (Alchemical Volatile Flask)
+  // Hero class state
+  public heroId: HeroId;
+  public heroConfig: HeroConfig;
+  private texturePrefix: string;
+
+  // Skill state
   public skillCooldownMax: number = 6.0;
   public skillCooldownRemaining: number = 0;
+  private guaranteedNextCrit: boolean = false;
+  private rogueKillWindowTimer: number = 0;
+  private reflectShieldTimer: number = 0;
+  private reflectShieldGfx: Phaser.GameObjects.Graphics | null = null;
 
   // Slash visual representation
   private slashSprite: Phaser.GameObjects.Sprite | null = null;
@@ -86,12 +96,26 @@ export class PlayerController {
   private animFrame: number = 0;
   private dustTimer: number = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist') {
     this.scene = scene;
+    this.heroId = heroId;
+    this.heroConfig = HEROES[heroId] || HEROES.alchemist;
+    this.texturePrefix = this.heroConfig.texturePrefix;
+
+    this.stats.maxHp = this.heroConfig.hp;
+    this.stats.hp = this.heroConfig.hp;
+    this.stats.maxArmor = this.heroConfig.armor;
+    this.stats.armor = this.heroConfig.armor;
+    this.stats.maxEnergy = this.heroConfig.maxEnergy;
+    this.stats.energy = this.heroConfig.maxEnergy;
+    this.stats.speed = this.heroConfig.speed;
+    this.stats.dashCooldown = this.heroConfig.dashCooldown;
+    this.skillCooldownMax = this.heroConfig.skillCooldown;
+    this.weaponSlots = [WEAPONS[this.heroConfig.startWeapon], null];
 
     // Visuals
     this.shadow = scene.add.sprite(x, y + 10, 'shadow').setDepth(9);
-    this.sprite = scene.add.sprite(x, y, 'player_idle').setDepth(10);
+    this.sprite = scene.add.sprite(x, y, `${this.texturePrefix}_idle`).setDepth(10);
 
     // Setup input keys
     const k = scene.input.keyboard!;
@@ -263,6 +287,23 @@ export class PlayerController {
       const progress = 1 - Math.max(0, this.skillCooldownRemaining / this.skillCooldownMax);
       events.emit('player:skill-cooldown', { progress, isReady: this.skillCooldownRemaining <= 0 });
     }
+    if (this.rogueKillWindowTimer > 0) {
+      this.rogueKillWindowTimer -= deltaSec;
+    }
+    if (this.reflectShieldTimer > 0) {
+      this.reflectShieldTimer -= deltaSec;
+      if (!this.reflectShieldGfx) {
+        this.reflectShieldGfx = this.scene.add.graphics().setDepth(13);
+      }
+      this.reflectShieldGfx.clear();
+      this.reflectShieldGfx.lineStyle(2.5, 0xfacc15, 0.9);
+      this.reflectShieldGfx.fillStyle(0xfacc15, 0.16);
+      this.reflectShieldGfx.fillCircle(this.sprite.x, this.sprite.y, 26);
+      this.reflectShieldGfx.strokeCircle(this.sprite.x, this.sprite.y, 26);
+      if (this.reflectShieldTimer <= 0) {
+        this.reflectShieldGfx.clear();
+      }
+    }
     if (this.invulnerableTimer > 0) {
       this.invulnerableTimer -= deltaSec;
       // Visual flash
@@ -287,7 +328,7 @@ export class PlayerController {
     // Active skill input (F or Right Click)
     const isRightClick = pointer.rightButtonDown() && pointer.getDuration() < 120;
     if ((Phaser.Input.Keyboard.JustDown(this.keys.f) || isRightClick) && this.skillCooldownRemaining <= 0) {
-      this.useAlchemicalFlask(pointer, pool);
+      this.useSkill(pointer, pool, wallColliders, doorColliders);
     }
 
     // Aiming towards mouse in world coordinates
@@ -362,10 +403,10 @@ export class PlayerController {
         if (this.animTimer > 0.15) {
           this.animTimer = 0;
           this.animFrame = (this.animFrame + 1) % 2;
-          this.sprite.setTexture(this.animFrame === 0 ? 'player_run_1' : 'player_run_2');
+          this.sprite.setTexture(this.animFrame === 0 ? `${this.texturePrefix}_run_1` : `${this.texturePrefix}_run_2`);
         }
       } else {
-        this.sprite.setTexture('player_idle');
+        this.sprite.setTexture(`${this.texturePrefix}_idle`);
       }
     }
 
@@ -473,8 +514,9 @@ export class PlayerController {
 
     this.shootCooldownRemaining = 1 / weapon.fireRate;
 
-    // Critical focus upgrade
-    const isCrit = this.upgrades.has('critical_focus') && Math.random() < 0.25;
+    // Critical focus upgrade or Rogue guaranteed crit
+    const isCrit = this.guaranteedNextCrit || (this.upgrades.has('critical_focus') && Math.random() < 0.25);
+    this.guaranteedNextCrit = false;
     const damageMultiplier = isCrit ? 2.0 : 1.0;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
     const extraBounce = this.upgrades.has('ricochet') ? 1 : 0;
@@ -587,6 +629,91 @@ export class PlayerController {
     }
   }
 
+  public isReflectShieldActive(): boolean {
+    return this.reflectShieldTimer > 0;
+  }
+
+  public onEnemyKilled(): void {
+    if (shouldResetSkillOnKill(this.heroId, this.rogueKillWindowTimer)) {
+      this.skillCooldownRemaining = 0;
+      this.rogueKillWindowTimer = 0;
+      events.emit('player:skill-cooldown', { progress: 1, isReady: true });
+    }
+  }
+
+  private useSkill(
+    pointer: Phaser.Input.Pointer,
+    pool: ProjectilePool,
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    doorColliders: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    if (this.heroId === 'rogue') {
+      this.useRogueShadowSlash(pointer, wallColliders, doorColliders);
+    } else if (this.heroId === 'vanguard') {
+      this.useVanguardReflectShield();
+    } else {
+      this.useAlchemicalFlask(pointer, pool);
+    }
+  }
+
+  public useRogueShadowSlash(
+    pointer: Phaser.Input.Pointer,
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    doorColliders: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+
+    const aimAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+    const pBounds = { width: 18, height: 20 };
+
+    this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.4);
+    this.guaranteedNextCrit = true;
+    this.rogueKillWindowTimer = 0.45;
+    audio.playDash();
+    audio.playSlash();
+
+    // Dash step up to 112px cleanly without clipping through walls
+    for (let step = 0; step < 14; step++) {
+      const nx = this.sprite.x + Math.cos(aimAngle) * 8;
+      const ny = this.sprite.y + Math.sin(aimAngle) * 8;
+      if (step % 3 === 0) this.createDashGhost(0xf43f5e);
+      if (!this.checkCollides(nx, this.sprite.y, pBounds, wallColliders, doorColliders)) {
+        this.sprite.x = nx;
+      }
+      if (!this.checkCollides(this.sprite.x, ny, pBounds, wallColliders, doorColliders)) {
+        this.sprite.y = ny;
+      }
+    }
+
+    if (this.slashSprite) {
+      this.slashSprite.setPosition(
+        this.sprite.x + Math.cos(aimAngle) * 26,
+        this.sprite.y + Math.sin(aimAngle) * 26
+      );
+      this.slashSprite.setRotation(aimAngle);
+      this.slashSprite.setVisible(true);
+      this.slashTimer = 0.16;
+    }
+
+    events.emit('player:melee-swing', {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      angle: aimAngle,
+      radius: 68,
+      arcDeg: 220,
+      damage: 18,
+      isCrit: true
+    });
+  }
+
+  public useVanguardReflectShield(): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.reflectShieldTimer = 3.0;
+    audio.playParryBullet();
+  }
+
   public useAlchemicalFlask(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
     this.skillCooldownRemaining = this.skillCooldownMax;
     events.emit('player:skill-cooldown', { progress: 0, isReady: false });
@@ -679,5 +806,6 @@ export class PlayerController {
     if (this.weaponSprite) this.weaponSprite.destroy();
     if (this.muzzleFlashSprite) this.muzzleFlashSprite.destroy();
     if (this.slashSprite) this.slashSprite.destroy();
+    if (this.reflectShieldGfx) this.reflectShieldGfx.destroy();
   }
 }

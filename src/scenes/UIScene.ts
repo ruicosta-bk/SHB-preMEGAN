@@ -5,6 +5,7 @@ import { PauseModal } from '../ui/PauseModal';
 import { UpgradeSelectModal } from '../ui/UpgradeSelectModal';
 import { GameOverModal, RunStats } from '../ui/GameOverModal';
 import { events } from '../core/EventBus';
+import { HeroId } from '../data/heroes';
 
 export class UIScene extends Phaser.Scene {
   public hud!: HUD;
@@ -12,6 +13,7 @@ export class UIScene extends Phaser.Scene {
   public pauseModal!: PauseModal;
   public upgradeModal!: UpgradeSelectModal;
   public gameOverModal!: GameOverModal;
+  private selectedHeroId: HeroId = 'alchemist';
 
   constructor() {
     super({ key: 'UIScene' });
@@ -47,20 +49,21 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Initial Title Screen
-    this.titleScreen.show(() => {
-      events.emit('game:restart');
+    this.titleScreen.show((heroId: HeroId) => {
+      this.selectedHeroId = heroId;
+      events.emit('game:restart', { heroId });
     });
 
     // Event hooks from MainScene
     events.on('game:over', (stats: RunStats) => {
       this.gameOverModal.show(stats, () => {
-        events.emit('game:restart');
+        events.emit('game:restart', { heroId: this.selectedHeroId });
       });
     });
 
     events.on('game:victory', (stats: RunStats) => {
       this.gameOverModal.show(stats, () => {
-        events.emit('game:restart');
+        events.emit('game:restart', { heroId: this.selectedHeroId });
       });
     });
 

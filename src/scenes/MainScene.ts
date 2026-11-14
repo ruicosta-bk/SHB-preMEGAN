@@ -3,6 +3,8 @@ import { TextureGenerator } from '../presentation/TextureGenerator';
 import { DungeonGenerator } from '../world/DungeonGenerator';
 import { RoomManager, PickupItem } from '../world/RoomManager';
 import { PlayerController } from '../player/PlayerController';
+import { PetController } from '../player/PetController';
+import { HeroId } from '../data/heroes';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { StatusManager } from '../combat/StatusManager';
 import { FloatingNumbers } from '../ui/FloatingNumbers';
@@ -14,12 +16,14 @@ import { audio } from '../core/AudioSystem';
 
 export class MainScene extends Phaser.Scene {
   private player!: PlayerController;
+  private pet!: PetController;
   private projectilePool!: ProjectilePool;
   private roomManager!: RoomManager;
   private floatingNumbers!: FloatingNumbers;
   private uiScene!: UIScene;
 
   // Game state
+  private currentHeroId: HeroId = 'alchemist';
   private isGameRunning: boolean = false;
   private isPaused: boolean = false;
   private seed: number = 1000;
@@ -90,6 +94,9 @@ export class MainScene extends Phaser.Scene {
 
     events.on('combat:enemy-died', (data: any) => {
       this.enemiesDefeated++;
+      if (this.player) {
+        this.player.onEnemyKilled();
+      }
       if (data.type === 'boss_ignis') {
         audio.playRoomClear();
         this.cameras.main.shake(350, 0.02);
@@ -200,12 +207,15 @@ export class MainScene extends Phaser.Scene {
       this.handleGameOver(false);
     });
 
-    events.on('game:restart', () => {
-      this.startNewRun();
+    events.on('game:restart', (data?: { heroId?: HeroId }) => {
+      this.startNewRun(data?.heroId || this.currentHeroId);
     });
   }
 
-  public startNewRun(): void {
+  public startNewRun(heroId?: HeroId): void {
+    if (heroId) {
+      this.currentHeroId = heroId;
+    }
     this.isGameRunning = true;
     this.isPaused = false;
     this.runTime = 0;
@@ -221,9 +231,12 @@ export class MainScene extends Phaser.Scene {
       this.roomManager.clearCurrentRoomVisuals();
     }
 
-    // Clean previous player
+    // Clean previous player & pet
     if (this.player) {
       this.player.destroy();
+    }
+    if (this.pet) {
+      this.pet.destroy();
     }
 
     // Generate fresh seamless dungeon floor + corridors
@@ -231,12 +244,13 @@ export class MainScene extends Phaser.Scene {
     const corridors = DungeonGenerator.generateCorridors(floorRooms);
     this.roomManager = new RoomManager(this, floorRooms, corridors);
 
-    // Spawn player in center of start room (Room 0)
+    // Spawn player & Clockwork Golem pet in center of start room (Room 0)
     const startRoom = floorRooms[0];
     const playerSpawnX = startRoom.worldX + startRoom.width / 2;
     const playerSpawnY = startRoom.worldY + startRoom.height / 2;
 
-    this.player = new PlayerController(this, playerSpawnX, playerSpawnY);
+    this.player = new PlayerController(this, playerSpawnX, playerSpawnY, this.currentHeroId);
+    this.pet = new PetController(this, playerSpawnX, playerSpawnY);
 
     // Build entire connected dungeon floor
     this.roomManager.buildEntireFloor();
@@ -343,6 +357,18 @@ export class MainScene extends Phaser.Scene {
       }
     );
 
+    // 3b. Update Clockwork Golem Pet Companion
+    if (this.pet) {
+      this.pet.update(
+        deltaSec,
+        this.player.sprite.x,
+        this.player.sprite.y,
+        this.roomManager.activeEnemies,
+        this.projectilePool,
+        this.roomManager.pickups
+      );
+    }
+
     // 4. Update Projectiles
     this.projectilePool.update(deltaSec, [...allWallsAndProps, ...this.roomManager.doorColliders]);
 
@@ -442,8 +468,21 @@ export class MainScene extends Phaser.Scene {
           }
         }
       } else {
-        // 3. Enemy bullet hitting player
+        // 3. Enemy bullet hitting player or Vanguard reflective shield
         const dist = Math.hypot(p.sprite.x - this.player.sprite.x, p.sprite.y - this.player.sprite.y);
+        if (this.player.isReflectShieldActive() && dist < 28) {
+          p.isPlayer = true;
+          p.isCrit = true;
+          p.vx = -p.vx * 1.4;
+          p.vy = -p.vy * 1.4;
+          p.damage = Math.max(4, p.damage * 2);
+          p.rangeRemaining = 420;
+          p.hitEntities.clear();
+          p.sprite.setTint(0xfacc15);
+          p.sprite.setRotation(Math.atan2(p.vy, p.vx));
+          audio.playParryBullet();
+          continue;
+        }
         if (dist < 18) {
           const hitRes = this.player.takeDamage({
             amount: p.damage,
