@@ -52,11 +52,16 @@ export class MainScene extends Phaser.Scene {
     this.scene.launch('UIScene');
     this.uiScene = this.scene.get('UIScene') as UIScene;
 
-    // 4. Register window blur to auto-pause
+    // 4. Register window blur to auto-pause & reset latched keyboard state
     window.addEventListener('blur', () => {
+      this.input.keyboard?.resetKeys();
       if (this.isGameRunning && !this.isPaused && !this.uiScene.isAnyModalOpen) {
         this.togglePause();
       }
+    });
+
+    this.input.on('pointerdown', () => {
+      if (typeof window.focus === 'function') window.focus();
     });
 
     // 5. Esc key listener for pause

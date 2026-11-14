@@ -99,6 +99,7 @@ export class PlayerController {
   // Animation walk cycle
   private animTimer: number = 0;
   private animFrame: number = 0;
+  private bobTimer: number = 0;
   private dustTimer: number = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist') {
@@ -433,9 +434,11 @@ export class PlayerController {
     }
 
     // Wall collision resolution (step X and step Y independently)
+    const pBounds = { width: 18, height: 20 };
+    this.ensureUnstuck(pBounds, wallColliders, doorColliders);
+
     const nextX = this.sprite.x + vx * deltaSec;
     const nextY = this.sprite.y + vy * deltaSec;
-    const pBounds = { width: 18, height: 20 };
 
     if (!this.checkCollides(nextX, this.sprite.y, pBounds, wallColliders, doorColliders)) {
       this.sprite.x = nextX;
@@ -443,6 +446,11 @@ export class PlayerController {
     if (!this.checkCollides(this.sprite.x, nextY, pBounds, wallColliders, doorColliders)) {
       this.sprite.y = nextY;
     }
+
+    // Subtle Soul Knight breathing / walk bounce squash-and-stretch
+    this.bobTimer += deltaSec * (moveLen > 0 ? 14 : 5.5);
+    const stretch = Math.sin(this.bobTimer) * (moveLen > 0 ? 0.06 : 0.035);
+    this.sprite.setScale(1 - stretch * 0.5, 1 + stretch);
 
     // Update shadow position
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 11);
@@ -556,6 +564,29 @@ export class PlayerController {
       }
     }
     return false;
+  }
+
+  private ensureUnstuck(
+    size: { width: number; height: number },
+    walls: { x: number; y: number; width: number; height: number }[],
+    doors: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    if (!this.checkCollides(this.sprite.x, this.sprite.y, size, walls, doors)) return;
+    const dirs = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [1, 1], [-1, 1], [1, -1], [-1, -1]
+    ];
+    for (const radius of [4, 8, 14, 22, 32]) {
+      for (const [dx, dy] of dirs) {
+        const tx = this.sprite.x + dx * radius;
+        const ty = this.sprite.y + dy * radius;
+        if (!this.checkCollides(tx, ty, size, walls, doors)) {
+          this.sprite.x = tx;
+          this.sprite.y = ty;
+          return;
+        }
+      }
+    }
   }
 
   private performAttack(
@@ -846,7 +877,7 @@ export class PlayerController {
           damage: 6,
           isPlayer: true,
           isCrit: false,
-          texture: 'bullet_player_pistol',
+          texture: 'bullet_pistol',
           range: 340,
           tint: 0xfacc15
         });

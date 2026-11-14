@@ -22,6 +22,7 @@ export abstract class EnemyBase implements EntityWithStatus {
   protected knockbackVx: number = 0;
   protected knockbackVy: number = 0;
   protected eliteAura: Phaser.GameObjects.Graphics | null = null;
+  protected bobTimer: number = Math.random() * Math.PI * 2;
 
   get x(): number { return this.sprite.x; }
   get y(): number { return this.sprite.y; }
@@ -197,7 +198,11 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
     }
 
-    // Facing direction
+    // Facing direction & subtle Soul Knight breathing squash-stretch
+    this.bobTimer += deltaSec * 5.2;
+    const baseScale = this.isElite ? 1.38 : this.getEnemyType() === 'boss_ignis' ? 1.2 : 1.0;
+    const breath = Math.sin(this.bobTimer) * 0.045;
+    this.sprite.setScale(baseScale * (1 - breath * 0.6), baseScale * (1 + breath));
     this.sprite.setFlipX(playerX < this.sprite.x);
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 8);
     if (this.eliteAura) {

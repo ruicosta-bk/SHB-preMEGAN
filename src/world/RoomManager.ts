@@ -411,13 +411,13 @@ export class RoomManager {
       }
     }
 
-    // 3. Detect player seamlessly entering any room interior (46px clear of walls/doors so gates never trap player)
+    // 3. Detect player seamlessly entering any room interior (54px clear of walls/doors so gates never trap player)
     for (const r of this.rooms) {
       if (
-        playerX >= r.worldX + 46 &&
-        playerX <= r.worldX + r.width - 46 &&
-        playerY >= r.worldY + 46 &&
-        playerY <= r.worldY + r.height - 46
+        playerX >= r.worldX + 54 &&
+        playerX <= r.worldX + r.width - 54 &&
+        playerY >= r.worldY + 54 &&
+        playerY <= r.worldY + r.height - 54
       ) {
         if (r.index !== this.currentRoomIndex) {
           this.enterRoom(r.index);
