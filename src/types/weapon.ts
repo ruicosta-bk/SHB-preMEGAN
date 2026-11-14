@@ -6,7 +6,10 @@ export type WeaponId =
   | 'blade'
   | 'bow'
   | 'laser'
-  | 'staff';
+  | 'staff'
+  | 'frost_sword'
+  | 'thunder_staff'
+  | 'inferno_gatling';
 
 export type WeaponCategory = 'gun' | 'melee' | 'bow' | 'beam';
 
@@ -33,5 +36,9 @@ export interface WeaponData {
   screenShake: number;
   chargeTime?: number; // for charge bows (seconds)
   isHoming?: boolean;
+  tier?: 1 | 2;
+  isChainLightning?: boolean;
+  appliesChill?: boolean;
+  appliesBurn?: boolean;
   descriptionVi: string;
 }

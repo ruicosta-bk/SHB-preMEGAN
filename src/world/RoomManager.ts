@@ -7,6 +7,7 @@ import { EnemyShooter } from '../enemies/EnemyShooter';
 import { EnemyFanCaster } from '../enemies/EnemyFanCaster';
 import { EnemyCharger } from '../enemies/EnemyCharger';
 import { BossIgnis } from '../enemies/BossIgnis';
+import { BossFrost } from '../enemies/BossFrost';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { InteractiveProps } from './InteractiveProps';
 import { WeaponData } from '../types/weapon';
@@ -446,6 +447,11 @@ export class RoomManager {
         enemy = new EnemyFanCaster(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'charger') {
         enemy = new EnemyCharger(this.scene, worldPosX, worldPosY);
+      } else if (
+        sp.type === 'boss_frost' ||
+        (sp.type === 'boss_ignis' && this.floorMeta.biomeId === 'frost_cavern' && this.floorMeta.isBossFloor)
+      ) {
+        enemy = new BossFrost(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
       } else if (sp.type === 'boss_ignis') {
         enemy = new BossIgnis(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
       }
@@ -558,7 +564,7 @@ export class RoomManager {
       }
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
 
-      if (enemy instanceof BossIgnis && this.activeEnemies.length < 5) {
+      if ((enemy instanceof BossIgnis || enemy instanceof BossFrost) && this.activeEnemies.length < 5) {
         const summons = enemy.consumeSummonRequest();
         if (summons && summons.length > 0) {
           const normSpawns = summons.map(s => ({
@@ -718,7 +724,7 @@ export class RoomManager {
     else if (type === 'altar') texture = 'upgrade_altar';
     else if (type === 'statue') texture = 'statue_alchemist';
     else if (type === 'vending') texture = 'vending_machine';
-    else if (type === 'forge') texture = 'forge_anvil';
+    else if (type === 'forge') texture = 'anvil_merge';
     else if (type === 'portal') texture = 'portal_1';
     else if (type === 'weapon') texture = (data as WeaponData)?.iconTexture || 'icon_shotgun';
     else if (type === 'shop_item') {

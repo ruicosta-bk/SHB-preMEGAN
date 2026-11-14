@@ -467,6 +467,106 @@ export class AudioSystem {
     this.registerVoice(90);
   }
 
+  public playMergeSuccess(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5]; // C5, E5, G5, B5, C6
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = now + idx * 0.065;
+      osc.type = idx === notes.length - 1 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.32, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.35);
+    });
+    this.registerVoice(550);
+  }
+
+  public playGemReward(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const notes = [1318.51, 1661.22, 1975.53]; // E6, G#6, B6 crystal triad
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = now + idx * 0.045;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    });
+    this.registerVoice(320);
+  }
+
+  public playLightning(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1450, now);
+    osc.frequency.exponentialRampToValueAtTime(240, now + 0.09);
+
+    gain.gain.setValueAtTime(0.38, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+
+    osc.start(now);
+    osc.stop(now + 0.095);
+    this.playNoise(0.085, 0.42, 3200, 'bandpass');
+    this.registerVoice(100);
+  }
+
+  public playBossFrostNova(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    // Deep sub-bass frost detonation boom
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = 'sawtooth';
+    subOsc.frequency.setValueAtTime(125, now);
+    subOsc.frequency.exponentialRampToValueAtTime(32, now + 0.4);
+    subGain.gain.setValueAtTime(0.7, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    subOsc.connect(subGain);
+    subGain.connect(this.masterGain!);
+    subOsc.start(now);
+    subOsc.stop(now + 0.4);
+
+    // Icy crystalline shatter shimmer
+    const iceOsc = ctx.createOscillator();
+    const iceGain = ctx.createGain();
+    iceOsc.type = 'triangle';
+    iceOsc.frequency.setValueAtTime(2100, now);
+    iceOsc.frequency.exponentialRampToValueAtTime(680, now + 0.22);
+    iceGain.gain.setValueAtTime(0.35, now);
+    iceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    iceOsc.connect(iceGain);
+    iceGain.connect(this.masterGain!);
+    iceOsc.start(now);
+    iceOsc.stop(now + 0.22);
+
+    this.playNoise(0.28, 0.55, 3400, 'highpass');
+    this.registerVoice(400);
+  }
+
   private playNoise(duration: number, volume: number, filterFreq: number, filterType: BiquadFilterType): void {
     if (!this.ctx || !this.masterGain) return;
     const ctx = this.ctx;

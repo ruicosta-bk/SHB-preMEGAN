@@ -3,12 +3,14 @@ import { Stats, DamageInfo, DamageResult } from '../types/entity';
 import { WeaponData, WeaponId } from '../types/weapon';
 import { UpgradeId } from '../types/upgrade';
 import { WEAPONS } from '../data/weapons';
+import { findMergeResult } from '../data/merges';
 import { UPGRADES } from '../data/upgrades';
 import { HEROES, HeroConfig, HeroId, shouldResetSkillOnKill } from '../data/heroes';
 import { DamageCalculator } from '../combat/DamageCalculator';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
+import { MetaBonuses } from '../core/MetaProgression';
 
 export class PlayerController {
   public scene: Phaser.Scene;
@@ -114,7 +116,7 @@ export class PlayerController {
   private glideVy: number = 0;
   private lavaTickTimer: number = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist') {
+  constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist', metaBonuses?: MetaBonuses) {
     this.scene = scene;
     this.heroId = heroId;
     this.heroConfig = HEROES[heroId] || HEROES.alchemist;
@@ -129,6 +131,19 @@ export class PlayerController {
     this.stats.speed = this.heroConfig.speed;
     this.stats.dashCooldown = this.heroConfig.dashCooldown;
     this.skillCooldownMax = this.heroConfig.skillCooldown;
+
+    if (metaBonuses) {
+      this.stats.maxHp += metaBonuses.bonusHp;
+      this.stats.hp += metaBonuses.bonusHp;
+      this.stats.maxArmor += metaBonuses.bonusArmor;
+      this.stats.armor += metaBonuses.bonusArmor;
+      this.stats.maxEnergy += metaBonuses.bonusEnergy;
+      this.stats.energy += metaBonuses.bonusEnergy;
+      this.coins += metaBonuses.startCoins;
+      this.stats.dashCooldown = Math.max(0.4, Number((this.stats.dashCooldown * metaBonuses.cooldownMult).toFixed(2)));
+      this.skillCooldownMax = Math.max(1.5, Number((this.skillCooldownMax * metaBonuses.cooldownMult).toFixed(2)));
+    }
+
     const starterWeapon = WEAPONS[this.heroConfig.startWeapon];
     this.weaponSlots = [starterWeapon, starterWeapon.energyCost > 0 ? WEAPONS.pistol : null];
 
@@ -274,6 +289,27 @@ export class PlayerController {
     audio.playPickup();
     this.emitWeaponChange();
     return nextLevel;
+  }
+
+  public getMergePreview(): { first: WeaponData; second: WeaponData; result: WeaponData } | null {
+    const first = this.weaponSlots[0];
+    const second = this.weaponSlots[1];
+    if (!first || !second) return null;
+    const mergedId = findMergeResult(first.id, second.id);
+    if (!mergedId) return null;
+    const result = WEAPONS[mergedId];
+    if (!result) return null;
+    return { first, second, result };
+  }
+
+  public mergeWeapons(): WeaponData | null {
+    const preview = this.getMergePreview();
+    if (!preview) return null;
+    this.weaponSlots = [preview.result, null];
+    this.activeSlotIndex = 0;
+    this.emitWeaponChange();
+    audio.playMergeSuccess();
+    return preview.result;
   }
 
   public applyDrinkBuff(kind: 'vitality' | 'energy' | 'haste'): string {
@@ -771,7 +807,7 @@ export class PlayerController {
     // Melee Blade attack
     if (weapon.category === 'melee') {
       const bladeBonus = this.upgrades.has('blade_mastery') ? 3 : 0;
-      const arcDegrees = this.upgrades.has('blade_mastery') ? 170 : weapon.spreadAngle;
+      const arcDegrees = this.upgrades.has('blade_mastery') ? Math.max(170, weapon.spreadAngle) : weapon.spreadAngle;
       const radius = this.upgrades.has('blade_mastery') ? weapon.range * 1.25 : weapon.range;
 
       audio.playSlash();
@@ -783,6 +819,11 @@ export class PlayerController {
           this.sprite.y + Math.sin(aimAngle) * 24
         );
         this.slashSprite.setRotation(aimAngle);
+        if (weapon.appliesChill) {
+          this.slashSprite.setTint(0x67e8f9);
+        } else {
+          this.slashSprite.clearTint();
+        }
         this.slashSprite.setVisible(true);
         this.slashTimer = 0.12;
       }
@@ -811,8 +852,43 @@ export class PlayerController {
         radius,
         arcDeg: arcDegrees,
         damage: (weapon.damage + bladeBonus) * damageMultiplier,
-        isCrit
+        isCrit,
+        element: weapon.appliesChill ? 'frost' : undefined
       });
+
+      // Frost Greatsword fires 3 piercing/chill ice shards in a forward fan
+      if (weapon.id === 'frost_sword') {
+        const shardOffsetsDeg = [-14, 0, 14];
+        const fireIceFan = (perpOffset: number, dmgScale: number) => {
+          const pxOff = -Math.sin(aimAngle) * perpOffset;
+          const pyOff = Math.cos(aimAngle) * perpOffset;
+          for (const deg of shardOffsetsDeg) {
+            const bulletAngle = aimAngle + Phaser.Math.DegToRad(deg);
+            pool.spawn({
+              x: this.sprite.x + Math.cos(aimAngle) * 20 + pxOff,
+              y: this.sprite.y + Math.sin(aimAngle) * 20 + pyOff,
+              angleRad: bulletAngle,
+              speed: 460,
+              damage: Math.max(1, Math.round(5 * damageMultiplier * dmgScale)),
+              isPlayer: true,
+              isCrit,
+              element: 'frost',
+              texture: weapon.bulletTexture,
+              range: 420,
+              pierceCount: 2 + extraPierce,
+              bounceCount: extraBounce,
+              tint: isCrit ? 0xbae6fd : undefined
+            });
+          }
+        };
+
+        if (this.dualWieldTimer > 0) {
+          fireIceFan(-6, 1.0);
+          fireIceFan(6, 0.75);
+        } else {
+          fireIceFan(0, 1.0);
+        }
+      }
 
       return;
     }
@@ -832,10 +908,14 @@ export class PlayerController {
         audio.playShootShotgun();
         break;
       case 'repeater':
+      case 'inferno_gatling':
         audio.playShootRepeater();
         break;
       case 'penetrator':
         audio.playShootPenetrator();
+        break;
+      case 'thunder_staff':
+        audio.playLightning();
         break;
       default:
         audio.playShootPistol();
@@ -847,13 +927,23 @@ export class PlayerController {
     const extraPellets = weapon.pellets > 1 && this.upgrades.has('shotgun_plus') ? 2 : 0;
     const totalPellets = weapon.pellets + extraPellets;
     const spreadRad = Phaser.Math.DegToRad(weapon.spreadAngle);
+    const bulletElement: 'fire' | 'frost' | 'lightning' | undefined =
+      weapon.appliesBurn || weapon.id === 'staff'
+        ? 'fire'
+        : weapon.appliesChill
+          ? 'frost'
+          : weapon.isChainLightning
+            ? 'lightning'
+            : undefined;
 
     const fireVolley = (perpOffset: number, dmgScale: number) => {
       const pxOff = -Math.sin(aimAngle) * perpOffset;
       const pyOff = Math.cos(aimAngle) * perpOffset;
       for (let i = 0; i < totalPellets; i++) {
         let angleOffset = 0;
-        if (totalPellets > 1) {
+        if (weapon.id === 'inferno_gatling' && totalPellets > 1) {
+          angleOffset = (i / (totalPellets - 1) - 0.5) * (spreadRad * 0.45) + (Math.random() - 0.5) * (spreadRad * 0.55);
+        } else if (totalPellets > 1) {
           angleOffset = (i / (totalPellets - 1) - 0.5) * spreadRad;
         } else if (weapon.spreadAngle > 0) {
           angleOffset = (Math.random() - 0.5) * spreadRad;
@@ -873,7 +963,7 @@ export class PlayerController {
           isPlayer: true,
           isCrit,
           isHoming: !!weapon.isHoming,
-          element: weapon.id === 'staff' ? 'fire' : undefined,
+          element: bulletElement,
           texture: weapon.bulletTexture,
           range: weapon.range,
           pierceCount: weapon.pierceCount + extraPierce,

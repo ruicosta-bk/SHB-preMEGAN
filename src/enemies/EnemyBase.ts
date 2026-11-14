@@ -197,7 +197,8 @@ export abstract class EnemyBase implements EntityWithStatus {
 
     // Facing direction & subtle Soul Knight breathing squash-stretch
     this.bobTimer += deltaSec * 5.2;
-    const baseScale = this.isElite ? 1.38 : this.getEnemyType() === 'boss_ignis' ? 1.2 : 1.0;
+    const isBoss = this.getEnemyType() === 'boss_ignis' || this.getEnemyType() === 'boss_frost';
+    const baseScale = this.isElite ? 1.38 : isBoss ? 1.2 : 1.0;
     const breath = Math.sin(this.bobTimer) * 0.045;
     this.sprite.setScale(baseScale * (1 - breath * 0.6), baseScale * (1 + breath));
     this.sprite.setFlipX(playerX < this.sprite.x);
@@ -251,7 +252,7 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
     }
 
-    const boxSize = this.getEnemyType() === 'boss_ignis' ? 36 : 18;
+    const boxSize = this.getEnemyType() === 'boss_ignis' || this.getEnemyType() === 'boss_frost' ? 36 : 18;
     if (!this.checkWallCollision(this.sprite.x, this.sprite.y, boxSize, boxSize, walls)) {
       return;
     }

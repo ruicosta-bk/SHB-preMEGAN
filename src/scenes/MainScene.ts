@@ -14,6 +14,7 @@ import { WeaponData } from '../types/weapon';
 import { WEAPONS } from '../data/weapons';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
+import { getMetaBonuses, recordRunResult } from '../core/MetaProgression';
 
 export class MainScene extends Phaser.Scene {
   private player!: PlayerController;
@@ -110,7 +111,7 @@ export class MainScene extends Phaser.Scene {
       if (this.player) {
         this.player.onEnemyKilled();
       }
-      if (data.type === 'boss_ignis') {
+      if (data.type === 'boss_ignis' || data.type === 'boss_frost') {
         audio.playRoomClear();
         this.cameras.main.shake(350, 0.02);
         if (this.roomManager) {
@@ -134,6 +135,7 @@ export class MainScene extends Phaser.Scene {
       arcDeg: number;
       damage: number;
       isCrit: boolean;
+      element?: 'physical' | 'fire' | 'lightning' | 'frost';
     }) => {
       if (!this.roomManager) return;
       const halfArcRad = Phaser.Math.DegToRad(data.arcDeg / 2);
@@ -152,6 +154,7 @@ export class MainScene extends Phaser.Scene {
             enemy.takeDamage({
               amount: data.damage,
               isCrit: data.isCrit,
+              element: data.element,
               knockback: { x: dx / len, y: dy / len, force: 210 },
               isPlayerAttack: true
             });
@@ -274,12 +277,41 @@ export class MainScene extends Phaser.Scene {
     events.on('game:restart', (data?: { heroId?: HeroId }) => {
       this.startNewRun(data?.heroId || this.currentHeroId);
     });
+
+    events.on('game:return-lobby', () => {
+      this.haltActiveRun();
+    });
+  }
+
+  private haltActiveRun(): void {
+    this.isGameRunning = false;
+    this.isPaused = false;
+    this.isTransitioningFloor = false;
+    this.nearestPickup = null;
+    this.floatingNumbers?.hidePrompt();
+    this.projectilePool?.clearAll();
+
+    if (this.roomManager) {
+      this.roomManager.clearCurrentRoomVisuals();
+    }
+    if (this.player) {
+      this.player.destroy();
+      (this.player as any) = undefined;
+    }
+    if (this.pet) {
+      this.pet.destroy();
+      (this.pet as any) = undefined;
+    }
   }
 
   public startNewRun(heroId?: HeroId): void {
     if (heroId) {
       this.currentHeroId = heroId;
     }
+
+    // Clean any active run state cleanly before starting fresh
+    this.haltActiveRun();
+
     this.isGameRunning = true;
     this.isPaused = false;
     this.isTransitioningFloor = false;
@@ -290,33 +322,18 @@ export class MainScene extends Phaser.Scene {
     this.damageDealt = 0;
     this.seed = Math.floor(Math.random() * 99999) + 1;
 
-    // Reset projectile pool
-    this.projectilePool.clearAll();
-
-    // Clean previous room manager
-    if (this.roomManager) {
-      this.roomManager.clearCurrentRoomVisuals();
-    }
-
-    // Clean previous player & pet
-    if (this.player) {
-      this.player.destroy();
-    }
-    if (this.pet) {
-      this.pet.destroy();
-    }
-
     // Generate fresh seamless dungeon floor + corridors
     const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor);
     const corridors = DungeonGenerator.generateCorridors(floorRooms);
     this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor);
 
-    // Spawn player & pet in center of start room (Room 0)
+    // Spawn player (with Soul Gem meta bonuses) & pet in center of start room (Room 0)
     const startRoom = floorRooms[0];
     const playerSpawnX = startRoom.worldX + startRoom.width / 2;
     const playerSpawnY = startRoom.worldY + startRoom.height / 2;
+    const metaBonuses = getMetaBonuses();
 
-    this.player = new PlayerController(this, playerSpawnX, playerSpawnY, this.currentHeroId);
+    this.player = new PlayerController(this, playerSpawnX, playerSpawnY, this.currentHeroId, metaBonuses);
     this.pet = new PetController(this, playerSpawnX, playerSpawnY);
 
     // Build entire connected dungeon floor
@@ -393,18 +410,33 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleGameOver(isVictory: boolean): void {
+    if (!this.isGameRunning) return;
     this.isGameRunning = false;
     const meta = getFloorMeta(this.currentFloor);
+    const roomsCleared = Math.max(
+      this.totalRoomsCleared,
+      this.roomManager ? this.roomManager.rooms.filter(r => r.isCleared).length : 0
+    );
+    const gemSummary = recordRunResult({
+      isVictory,
+      enemiesDefeated: this.enemiesDefeated,
+      roomsCleared,
+      floorNumber: this.currentFloor,
+      floorCode: meta.code
+    });
+    audio.playGemReward();
     const stats = {
       isVictory,
       timeSeconds: this.runTime,
       enemiesDefeated: this.enemiesDefeated,
-      roomsCleared: Math.max(this.totalRoomsCleared, this.roomManager.rooms.filter(r => r.isCleared).length),
+      roomsCleared,
       totalRooms: this.currentFloor * 8,
       floorReached: `${meta.code} · ${meta.biomeNameVi}`,
-      damageDealt: this.damageDealt
+      damageDealt: this.damageDealt,
+      gemsEarned: gemSummary.gemsEarned,
+      totalGems: gemSummary.totalGems
     };
-    events.emit('game:over', stats);
+    events.emit(isVictory ? 'game:victory' : 'game:over', stats);
   }
 
   private handleVictory(): void {
@@ -412,23 +444,12 @@ export class MainScene extends Phaser.Scene {
     audio.playRoomClear();
     this.cameras.main.shake(400, 0.02);
     this.time.delayedCall(1200, () => {
-      this.isGameRunning = false;
-      const meta = getFloorMeta(this.currentFloor);
-      const stats = {
-        isVictory: true,
-        timeSeconds: this.runTime,
-        enemiesDefeated: this.enemiesDefeated,
-        roomsCleared: Math.max(this.totalRoomsCleared, this.roomManager.rooms.filter(r => r.isCleared).length),
-        totalRooms: this.currentFloor * 8,
-        floorReached: `${meta.code} · ${meta.biomeNameVi}`,
-        damageDealt: this.damageDealt
-      };
-      events.emit('game:victory', stats);
+      this.handleGameOver(true);
     });
   }
 
   public override update(time: number, delta: number): void {
-    if (!this.isGameRunning || this.isPaused || (this.uiScene && this.uiScene.isAnyModalOpen)) {
+    if (!this.isGameRunning || this.isPaused || (this.uiScene && this.uiScene.isAnyModalOpen) || !this.player || !this.roomManager) {
       return;
     }
 
@@ -564,19 +585,32 @@ export class MainScene extends Phaser.Scene {
             }
 
             // Soul Knight tactile feel: Crit screen shake & Chain Lightning shock (safe instance lookup!)
-            if (p.isCrit || p.element === 'lightning') {
+            const isThunderStaff = p.sprite.texture.key === 'bullet_lightning';
+            if (p.isCrit || p.element === 'lightning' || isThunderStaff) {
               if (p.isCrit) {
                 this.cameras.main.shake(120, 0.01);
               }
-              const chainTargets = StatusManager.findChainTargets(enemy, this.roomManager.activeEnemies, 130, 2);
+              const chainRadius = isThunderStaff ? 160 : 130;
+              const maxChainTargets = isThunderStaff ? 3 : 2;
+              const chainTargets = StatusManager.findChainTargets(
+                enemy,
+                this.roomManager.activeEnemies,
+                chainRadius,
+                maxChainTargets
+              );
               if (chainTargets.length > 0) {
-                audio.playChainLightning();
+                if (isThunderStaff) {
+                  audio.playLightning();
+                } else {
+                  audio.playChainLightning();
+                }
+                const chainDamage = isThunderStaff ? 5 : Math.max(1, Math.ceil(p.damage * 0.65));
                 for (const ct of chainTargets) {
                   const targetEnemy = this.roomManager.activeEnemies.find(e => e.id === ct.id && !e.isDead);
                   if (!targetEnemy) continue;
                   this.drawLightningArc(enemy.sprite.x, enemy.sprite.y, targetEnemy.sprite.x, targetEnemy.sprite.y);
                   targetEnemy.takeDamage({
-                    amount: Math.max(1, Math.ceil(p.damage * 0.65)),
+                    amount: chainDamage,
                     isCrit: false,
                     element: 'lightning',
                     isPlayerAttack: true
@@ -667,20 +701,49 @@ export class MainScene extends Phaser.Scene {
   }
 
   private drawLightningArc(x1: number, y1: number, x2: number, y2: number): void {
+    events.emit('combat:lightning-arc', { fromX: x1, fromY: y1, toX: x2, toY: y2 });
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const points: { x: number; y: number }[] = [{ x: x1, y: y1 }];
+    const segments = 4;
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments;
+      const jitter = (Math.random() - 0.5) * 22;
+      points.push({
+        x: x1 + dx * t + nx * jitter,
+        y: y1 + dy * t + ny * jitter
+      });
+    }
+    points.push({ x: x2, y: y2 });
+
     const gfx = this.add.graphics().setDepth(22);
-    gfx.lineStyle(2, 0x38bdf8, 1);
+    // Outer cyan energy arc
+    gfx.lineStyle(3.5, 0x38bdf8, 0.85);
     gfx.beginPath();
-    gfx.moveTo(x1, y1);
-    const midX = (x1 + x2) / 2 + (Math.random() - 0.5) * 20;
-    const midY = (y1 + y2) / 2 + (Math.random() - 0.5) * 20;
-    gfx.lineTo(midX, midY);
-    gfx.lineTo(x2, y2);
+    gfx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      gfx.lineTo(points[i].x, points[i].y);
+    }
+    gfx.strokePath();
+
+    // Inner bright yellow core
+    gfx.lineStyle(1.8, 0xfef08a, 1);
+    gfx.beginPath();
+    gfx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      gfx.lineTo(points[i].x, points[i].y);
+    }
     gfx.strokePath();
 
     this.tweens.add({
       targets: gfx,
       alpha: 0,
-      duration: 150,
+      duration: 160,
       onComplete: () => gfx.destroy()
     });
   }
@@ -773,7 +836,10 @@ export class MainScene extends Phaser.Scene {
       } else if (this.nearestPickup.type === 'vending') {
         prompt = `[E] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
       } else if (this.nearestPickup.type === 'forge') {
-        prompt = `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
+        const mergePreview = this.player.getMergePreview();
+        prompt = mergePreview
+          ? `[E] Hợp Nhất: ${mergePreview.first.nameVi} + ${mergePreview.second.nameVi} -> ${mergePreview.result.nameVi} (Miễn phí)`
+          : `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
       } else if (this.nearestPickup.type === 'portal') {
         prompt = this.currentFloor < TOTAL_FLOORS ? '[E] Bước Vào Tầng Tiếp Theo' : '[E] Hoàn Thành Hầm Ngục';
       } else if (this.nearestPickup.type === 'shop_item') {
@@ -786,7 +852,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private interactWithNearest(): void {
-    if (!this.nearestPickup) return;
+    if (!this.isGameRunning || !this.player || !this.roomManager || !this.nearestPickup) return;
 
     const p = this.nearestPickup;
 
@@ -851,6 +917,19 @@ export class MainScene extends Phaser.Scene {
         this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
       }
     } else if (p.type === 'forge') {
+      const merged = this.player.mergeWeapons();
+      if (merged) {
+        this.floatingNumbers.showNotice(
+          p.sprite.x,
+          p.sprite.y - 24,
+          `HỢP NHẤT: ${merged.nameVi}!`,
+          '#38bdf8'
+        );
+        this.cameras.main.shake(180, 0.009);
+        this.removePickup(p);
+        return;
+      }
+
       const cost = p.price || 18;
       const curWep = this.player.getCurrentWeapon();
       if (this.player.getForgeLevel(curWep.id) >= 2) {

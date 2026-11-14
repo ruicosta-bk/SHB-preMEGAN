@@ -49,23 +49,24 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Initial Title Screen
-    this.titleScreen.show((heroId: HeroId) => {
-      this.selectedHeroId = heroId;
-      events.emit('game:restart', { heroId });
-    });
+    this.showTitleScreen();
 
     // Event hooks from MainScene
-    events.on('game:over', (stats: RunStats) => {
-      this.gameOverModal.show(stats, () => {
-        events.emit('game:restart', { heroId: this.selectedHeroId });
-      });
-    });
+    const openGameOverModal = (stats: RunStats) => {
+      this.gameOverModal.show(
+        stats,
+        () => {
+          events.emit('game:restart', { heroId: this.selectedHeroId });
+        },
+        () => {
+          events.emit('game:return-lobby');
+          this.showTitleScreen();
+        }
+      );
+    };
 
-    events.on('game:victory', (stats: RunStats) => {
-      this.gameOverModal.show(stats, () => {
-        events.emit('game:restart', { heroId: this.selectedHeroId });
-      });
-    });
+    events.on('game:over', openGameOverModal);
+    events.on('game:victory', openGameOverModal);
 
     events.on('upgrade:offer', (data: { onSelected: (upg: any) => void }) => {
       this.upgradeModal.show((selected) => {
@@ -82,6 +83,13 @@ export class UIScene extends Phaser.Scene {
       } else {
         this.pauseModal.hide();
       }
+    });
+  }
+
+  private showTitleScreen(): void {
+    this.titleScreen.show((heroId: HeroId) => {
+      this.selectedHeroId = heroId;
+      events.emit('game:restart', { heroId });
     });
   }
 

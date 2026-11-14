@@ -942,6 +942,85 @@ export class TextureGenerator {
 
     drawBoss('boss_ignis_p1', false);
     drawBoss('boss_ignis_p2', true);
+
+    const drawFrostBoss = (key: string, isPhase2: boolean) => {
+      const ctx = this.createCanvas(tm, key, 56, 56);
+      const o = '#090b10';
+      const cape = isPhase2 ? '#312e81' : '#0c4a6e';
+      const armor = isPhase2 ? '#1e3a8a' : '#0369a1';
+      const armorHi = isPhase2 ? '#6366f1' : '#0284c7';
+      const ice = isPhase2 ? '#a78bfa' : '#bae6fd';
+      const rune = isPhase2 ? '#c084fc' : '#22d3ee';
+      const core = isPhase2 ? '#ffffff' : '#67e8f9';
+
+      // Billowing glacial / storm-indigo cloak behind boss
+      px(ctx, o, 7, 15, 42, 34);
+      px(ctx, cape, 9, 17, 38, 30);
+      px(ctx, armor, 11, 38, 34, 8);
+
+      // Jagged Ice-Rune Crown
+      px(ctx, o, 13, 2, 6, 11);
+      px(ctx, o, 24, 0, 8, 12);
+      px(ctx, o, 37, 2, 6, 11);
+      px(ctx, ice, 14, 3, 4, 8);
+      px(ctx, ice, 26, 1, 4, 10);
+      px(ctx, ice, 38, 3, 4, 8);
+      px(ctx, rune, 27, 3, 2, 6);
+
+      // Frost Guardian Helm & Glowing Cyan Eyes
+      px(ctx, o, 15, 10, 26, 16);
+      px(ctx, armor, 17, 12, 22, 12);
+      px(ctx, armorHi, 19, 12, 18, 5);
+      // Recessed eye slits split by crystalline nasal guard
+      px(ctx, o, 19, 17, 7, 4);
+      px(ctx, o, 30, 17, 7, 4);
+      px(ctx, ice, 26, 14, 4, 8);
+      px(ctx, '#22d3ee', 20, 18, 5, 2);
+      px(ctx, '#22d3ee', 31, 18, 5, 2);
+      px(ctx, core, 22, 18, 2, 2);
+      px(ctx, core, 32, 18, 2, 2);
+      // Frosted jaw plates
+      px(ctx, o, 20, 22, 16, 3);
+      px(ctx, ice, 21, 22, 3, 2);
+      px(ctx, ice, 26, 22, 4, 2);
+      px(ctx, ice, 32, 22, 3, 2);
+
+      // Crystalline Ice Shoulder Pauldrons
+      px(ctx, o, 4, 17, 12, 14);
+      px(ctx, armorHi, 6, 19, 8, 10);
+      px(ctx, ice, 5, 16, 5, 4);
+      px(ctx, o, 40, 17, 12, 14);
+      px(ctx, armorHi, 42, 19, 8, 10);
+      px(ctx, ice, 46, 16, 5, 4);
+
+      // Chestplate & Frost Rune Core
+      px(ctx, o, 14, 25, 28, 22);
+      px(ctx, armor, 16, 26, 24, 20);
+      px(ctx, ice, 18, 27, 20, 3);
+      px(ctx, o, 22, 31, 12, 11);
+      px(ctx, isPhase2 ? '#4f46e5' : '#0284c7', 23, 32, 10, 9);
+      px(ctx, rune, 25, 34, 6, 5);
+      px(ctx, core, 27, 35, 2, 3);
+
+      // Glacial Rune Scepter held on right
+      px(ctx, o, 48, 11, 5, 37);
+      px(ctx, '#1e293b', 49, 22, 3, 24);
+      px(ctx, o, 46, 7, 9, 12);
+      px(ctx, isPhase2 ? '#7c3aed' : '#0284c7', 47, 8, 7, 10);
+      px(ctx, rune, 49, 10, 3, 6);
+      px(ctx, core, 50, 11, 1, 3);
+
+      // Heavy Frost Greaves
+      px(ctx, o, 15, 47, 9, 7);
+      px(ctx, ice, 17, 48, 5, 4);
+      px(ctx, o, 32, 47, 9, 7);
+      px(ctx, ice, 34, 48, 5, 4);
+
+      this.refresh(tm, key);
+    };
+
+    drawFrostBoss('boss_frost_p1', false);
+    drawFrostBoss('boss_frost_p2', true);
   }
 
   private static createProjectiles(tm: Phaser.Textures.TextureManager): void {
@@ -1080,6 +1159,49 @@ export class TextureGenerator {
     ctx.beginPath(); ctx.arc(9, 9, 2.5, 0, Math.PI * 2); ctx.fill();
     this.refresh(tm, 'bullet_boss_orb');
 
+    // Boss Frost Orb (16x16 icy crystal orb)
+    ctx = this.createCanvas(tm, 'bullet_frost', 16, 16);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath(); ctx.arc(8, 8, 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath(); ctx.arc(8, 8, 6.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath(); ctx.arc(8, 8, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e0f2fe';
+    ctx.beginPath(); ctx.arc(8, 8, 2.2, 0, Math.PI * 2); ctx.fill();
+    this.refresh(tm, 'bullet_frost');
+
+    // Tier-2 Thunder Staff Lightning Bolt (18x12 crackling yellow-cyan bolt)
+    ctx = this.createCanvas(tm, 'bullet_lightning', 18, 12);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.moveTo(1, 6); ctx.lineTo(7, 1); ctx.lineTo(10, 4); ctx.lineTo(17, 3);
+    ctx.lineTo(11, 11); ctx.lineTo(8, 8);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#22d3ee';
+    ctx.beginPath();
+    ctx.moveTo(2, 6); ctx.lineTo(7, 2); ctx.lineTo(10, 5); ctx.lineTo(16, 4);
+    ctx.lineTo(11, 10); ctx.lineTo(8, 7);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(5, 5, 8, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(7, 5, 4, 2);
+    this.refresh(tm, 'bullet_lightning');
+
+    // Tier-2 Inferno Gatling Ember Slug (16x10 fiery orange-red slug)
+    ctx = this.createCanvas(tm, 'bullet_inferno', 16, 10);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(0, 2, 15, 6);
+    ctx.fillRect(12, 3, 4, 4);
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(1, 3, 13, 4);
+    ctx.fillStyle = '#f97316';
+    ctx.fillRect(4, 3, 10, 4);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(9, 4, 5, 2);
+    this.refresh(tm, 'bullet_inferno');
+
     // Slash Arc
     ctx = this.createCanvas(tm, 'slash_arc', 68, 68);
     ctx.strokeStyle = '#e0f2fe';
@@ -1183,6 +1305,47 @@ export class TextureGenerator {
       ctx.fillStyle = '#78350f'; ctx.fillRect(2, 5, 19, 2);
       ctx.fillStyle = '#f97316'; ctx.fillRect(21, 3, 5, 6);
       ctx.fillStyle = '#fef08a'; ctx.fillRect(23, 5, 2, 2);
+    });
+
+    // Tier-2 Frost Sword (32x12): Icy cyan greatsword with crystal hilt
+    drawGun('hand_frost_sword', 32, 12, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 4, 29, 4);
+      ctx.fillRect(7, 1, 4, 10);
+      ctx.fillRect(27, 5, 4, 2);
+      ctx.fillStyle = '#1e3a8a'; ctx.fillRect(2, 5, 5, 2); // grip
+      ctx.fillStyle = '#38bdf8'; ctx.fillRect(8, 2, 2, 8); // crystal crossguard
+      ctx.fillStyle = '#bae6fd'; ctx.fillRect(9, 5, 2, 2);
+      ctx.fillStyle = '#0284c7'; ctx.fillRect(11, 4, 17, 4); // broad blade
+      ctx.fillStyle = '#e0f2fe'; ctx.fillRect(11, 5, 18, 2); // icy edge gleam
+    });
+
+    // Tier-2 Thunder Staff (30x14): Golden-indigo lightning staff with glowing orb
+    drawGun('hand_thunder_staff', 30, 14, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 5, 21, 4);
+      ctx.fillRect(19, 2, 10, 10);
+      ctx.fillStyle = '#312e81'; ctx.fillRect(2, 6, 18, 2); // indigo shaft
+      ctx.fillStyle = '#facc15'; ctx.fillRect(18, 4, 2, 6); // gold collar
+      ctx.fillStyle = '#eab308'; ctx.fillRect(20, 3, 8, 8); // golden prongs
+      ctx.fillStyle = '#22d3ee'; ctx.fillRect(22, 4, 5, 6); // cyan lightning orb
+      ctx.fillStyle = '#fef9c3'; ctx.fillRect(23, 5, 3, 4); // bright core
+    });
+
+    // Tier-2 Inferno Gatling (30x14): Crimson-orange multi-barrel rotary cannon
+    drawGun('hand_inferno_gatling', 30, 14, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 2, 15, 10);
+      ctx.fillRect(15, 3, 14, 8);
+      ctx.fillStyle = '#7f1d1d'; ctx.fillRect(2, 3, 13, 8); // crimson receiver
+      ctx.fillStyle = '#f97316'; ctx.fillRect(5, 5, 6, 4); // glowing furnace core
+      ctx.fillStyle = '#fef08a'; ctx.fillRect(7, 6, 3, 2);
+      // 3 rotary barrels
+      ctx.fillStyle = '#475569'; ctx.fillRect(16, 4, 12, 2);
+      ctx.fillStyle = '#64748b'; ctx.fillRect(16, 6, 12, 2);
+      ctx.fillStyle = '#475569'; ctx.fillRect(16, 8, 12, 2);
+      ctx.fillStyle = '#dc2626'; ctx.fillRect(21, 3, 2, 8); // barrel clamp
+      ctx.fillStyle = '#fb923c'; ctx.fillRect(26, 4, 2, 6); // heated muzzle
     });
   }
 
@@ -1346,6 +1509,25 @@ export class TextureGenerator {
     ctx.fillStyle = '#f97316'; ctx.fillRect(12, 11, 8, 3);
     ctx.fillStyle = '#fef08a'; ctx.fillRect(14, 11, 4, 2);
     this.refresh(tm, 'forge_anvil');
+
+    // 14. Arcane Weapon Merge Anvil / Pedestal (32x32)
+    ctx = this.createCanvas(tm, 'anvil_merge', 32, 32);
+    ctx.fillStyle = '#090b10'; ctx.fillRect(2, 9, 28, 21);
+    // Obsidian-slate pedestal base
+    ctx.fillStyle = '#1e293b'; ctx.fillRect(5, 19, 22, 10);
+    ctx.fillStyle = '#334155'; ctx.fillRect(3, 10, 26, 9);
+    ctx.fillStyle = '#64748b'; ctx.fillRect(4, 10, 24, 3);
+    // Dual arcane cyan + amber fusion runes on anvil face
+    ctx.fillStyle = '#22d3ee'; ctx.fillRect(6, 14, 7, 3);
+    ctx.fillStyle = '#cffafe'; ctx.fillRect(8, 15, 3, 1);
+    ctx.fillStyle = '#f59e0b'; ctx.fillRect(19, 14, 7, 3);
+    ctx.fillStyle = '#fef08a'; ctx.fillRect(21, 15, 3, 1);
+    // Center fusion rune core & hovering arcane prism spark
+    ctx.fillStyle = '#38bdf8'; ctx.fillRect(14, 21, 4, 5);
+    ctx.fillStyle = '#f59e0b'; ctx.fillRect(15, 22, 2, 3);
+    ctx.fillStyle = '#22d3ee'; ctx.fillRect(13, 3, 6, 5);
+    ctx.fillStyle = '#fef08a'; ctx.fillRect(15, 4, 2, 3);
+    this.refresh(tm, 'anvil_merge');
   }
 
   private static createIcons(tm: Phaser.Textures.TextureManager): void {
@@ -1400,6 +1582,37 @@ export class TextureGenerator {
     drawSimpleIcon('icon_staff', '#0f172a', '#f97316', ctx => {
       ctx.fillRect(7, 15, 13, 3);
       ctx.beginPath(); ctx.arc(22, 16, 4.5, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Tier-2 Weapon Icons (32x32)
+    drawSimpleIcon('icon_frost_sword', '#082f49', '#38bdf8', ctx => {
+      ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.moveTo(7, 25); ctx.lineTo(25, 7); ctx.stroke();
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillRect(20, 7, 5, 5);
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillRect(8, 17, 7, 3);
+      ctx.fillRect(12, 19, 3, 7);
+    });
+    drawSimpleIcon('icon_thunder_staff', '#1e1b4b', '#facc15', ctx => {
+      ctx.fillStyle = '#a5b4fc';
+      ctx.fillRect(7, 21, 12, 3);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(17, 11, 8, 8);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(19, 13, 4, 4);
+      ctx.fillStyle = '#fef9c3';
+      ctx.fillRect(20, 7, 3, 4);
+    });
+    drawSimpleIcon('icon_inferno_gatling', '#450a0a', '#f97316', ctx => {
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(5, 11, 11, 10);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(16, 11, 11, 2);
+      ctx.fillRect(16, 15, 11, 2);
+      ctx.fillRect(16, 19, 11, 2);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(8, 14, 5, 4);
     });
 
     // Upgrades icons

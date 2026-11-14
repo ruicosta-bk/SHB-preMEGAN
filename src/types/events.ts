@@ -36,7 +36,20 @@ export interface GameEvents {
 
   // Game cycle
   'game:pause-toggled': { isPaused: boolean };
-  'game:victory': { timeElapsed: number; enemiesKilled: number; damageDealt: number };
-  'game:over': { timeElapsed: number; enemiesKilled: number; roomsCleared: number };
-  'game:restart': void;
+  'game:victory': RunResultEventPayload;
+  'game:over': RunResultEventPayload;
+  'game:restart': { heroId?: string } | void;
+  'game:return-lobby': void;
+}
+
+export interface RunResultEventPayload {
+  isVictory: boolean;
+  timeSeconds: number;
+  enemiesDefeated: number;
+  roomsCleared: number;
+  totalRooms?: number;
+  floorReached?: string;
+  damageDealt: number;
+  gemsEarned?: number;
+  totalGems?: number;
 }
