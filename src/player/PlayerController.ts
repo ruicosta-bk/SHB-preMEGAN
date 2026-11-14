@@ -79,6 +79,8 @@ export class PlayerController {
   public statueBlessing: 'knight' | 'sorcerer' | null = null;
   private guaranteedNextCrit: boolean = false;
   private rogueKillWindowTimer: number = 0;
+  private dualWieldTimer: number = 0;
+  private vampireHealCharges: number = 0;
   private reflectShieldTimer: number = 0;
   private reflectShieldGfx: Phaser.GameObjects.Graphics | null = null;
   private frostSlowTimer: number = 0;
@@ -125,7 +127,8 @@ export class PlayerController {
     this.stats.speed = this.heroConfig.speed;
     this.stats.dashCooldown = this.heroConfig.dashCooldown;
     this.skillCooldownMax = this.heroConfig.skillCooldown;
-    this.weaponSlots = [WEAPONS[this.heroConfig.startWeapon], null];
+    const starterWeapon = WEAPONS[this.heroConfig.startWeapon];
+    this.weaponSlots = [starterWeapon, starterWeapon.energyCost > 0 ? WEAPONS.pistol : null];
 
     // Visuals
     this.shadow = scene.add.sprite(x, y + 10, 'shadow').setDepth(9);
@@ -157,6 +160,11 @@ export class PlayerController {
     this.muzzleFlashSprite = scene.add.sprite(x, y, 'muzzle_flash').setDepth(13).setVisible(false);
 
     // Notify initial state
+    events.emit('player:hero-selected', {
+      skillShortLabelVi: this.heroConfig.skillShortLabelVi,
+      accentHex: this.heroConfig.accentHex,
+      accentColor: this.heroConfig.accentColor
+    });
     this.emitStats();
     this.emitWeaponChange();
     this.emitCoins();
@@ -305,6 +313,7 @@ export class PlayerController {
     this.bowChargeTime = 0;
     this.bowChargeGfx?.clear();
     this.frostSlowTimer = 0;
+    this.dualWieldTimer = 0;
     this.isOnIce = false;
     this.glideVx = 0;
     this.glideVy = 0;
@@ -383,6 +392,12 @@ export class PlayerController {
     }
     if (this.rogueKillWindowTimer > 0) {
       this.rogueKillWindowTimer -= deltaSec;
+    }
+    if (this.dualWieldTimer > 0) {
+      this.dualWieldTimer -= deltaSec;
+      if (this.dualWieldTimer <= 0 && this.frostSlowTimer <= 0 && !this.isDead) {
+        this.sprite.clearTint();
+      }
     }
     if (this.frostSlowTimer > 0) {
       this.frostSlowTimer -= deltaSec;
@@ -785,41 +800,52 @@ export class PlayerController {
         break;
     }
 
-    // Spawn pellets (shotgun_plus grants +2 extra pellets for multi-projectile weapons)
+    // Spawn pellets (shotgun_plus grants +2 extra pellets, Knight Dual-Wield fires a parallel twin volley)
     const baseDamage = weapon.damage * damageMultiplier;
     const extraPellets = weapon.pellets > 1 && this.upgrades.has('shotgun_plus') ? 2 : 0;
     const totalPellets = weapon.pellets + extraPellets;
     const spreadRad = Phaser.Math.DegToRad(weapon.spreadAngle);
 
-    for (let i = 0; i < totalPellets; i++) {
-      let angleOffset = 0;
-      if (totalPellets > 1) {
-        angleOffset = (i / (totalPellets - 1) - 0.5) * spreadRad;
-      } else if (weapon.spreadAngle > 0) {
-        angleOffset = (Math.random() - 0.5) * spreadRad;
+    const fireVolley = (perpOffset: number, dmgScale: number) => {
+      const pxOff = -Math.sin(aimAngle) * perpOffset;
+      const pyOff = Math.cos(aimAngle) * perpOffset;
+      for (let i = 0; i < totalPellets; i++) {
+        let angleOffset = 0;
+        if (totalPellets > 1) {
+          angleOffset = (i / (totalPellets - 1) - 0.5) * spreadRad;
+        } else if (weapon.spreadAngle > 0) {
+          angleOffset = (Math.random() - 0.5) * spreadRad;
+        }
+
+        const bulletAngle = aimAngle + angleOffset;
+        const muzzleDist = 18;
+        const spawnX = this.sprite.x + Math.cos(aimAngle) * muzzleDist + pxOff;
+        const spawnY = this.sprite.y + Math.sin(aimAngle) * muzzleDist + pyOff;
+
+        pool.spawn({
+          x: spawnX,
+          y: spawnY,
+          angleRad: bulletAngle,
+          speed: weapon.bulletSpeed,
+          damage: Math.max(1, Math.round(baseDamage * dmgScale)),
+          isPlayer: true,
+          isCrit,
+          isHoming: !!weapon.isHoming,
+          element: weapon.id === 'staff' ? 'fire' : undefined,
+          texture: weapon.bulletTexture,
+          range: weapon.range,
+          pierceCount: weapon.pierceCount + extraPierce,
+          bounceCount: weapon.bounceCount + extraBounce,
+          tint: isCrit ? 0xff0055 : undefined
+        });
       }
+    };
 
-      const bulletAngle = aimAngle + angleOffset;
-      const muzzleDist = 18;
-      const spawnX = this.sprite.x + Math.cos(aimAngle) * muzzleDist;
-      const spawnY = this.sprite.y + Math.sin(aimAngle) * muzzleDist;
-
-      pool.spawn({
-        x: spawnX,
-        y: spawnY,
-        angleRad: bulletAngle,
-        speed: weapon.bulletSpeed,
-        damage: baseDamage,
-        isPlayer: true,
-        isCrit,
-        isHoming: !!weapon.isHoming,
-        element: weapon.id === 'staff' ? 'fire' : undefined,
-        texture: weapon.bulletTexture,
-        range: weapon.range,
-        pierceCount: weapon.pierceCount + extraPierce,
-        bounceCount: weapon.bounceCount + extraBounce,
-        tint: isCrit ? 0xff0055 : undefined
-      });
+    if (this.dualWieldTimer > 0) {
+      fireVolley(-6, 1.0);
+      fireVolley(6, 0.75);
+    } else {
+      fireVolley(0, 1.0);
     }
   }
 
@@ -949,10 +975,87 @@ export class PlayerController {
       this.useRogueShadowSlash(pointer, wallColliders, doorColliders);
     } else if (this.heroId === 'vanguard') {
       this.useVanguardReflectShield();
+    } else if (this.heroId === 'knight') {
+      this.useKnightDualWield();
+    } else if (this.heroId === 'wizard') {
+      this.useWizardFrostStorm(pointer, pool);
+    } else if (this.heroId === 'vampire') {
+      this.useVampireBatSwarm(pointer, pool);
     } else {
       this.useAlchemicalFlask(pointer, pool);
     }
     this.triggerStatueBlessing(pointer, pool);
+  }
+
+  public onVampireBatHit(): void {
+    this.stats.energy = Math.min(this.stats.maxEnergy, this.stats.energy + 4);
+    if (this.vampireHealCharges > 0 && this.stats.hp < this.stats.maxHp) {
+      this.vampireHealCharges--;
+      this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + 1);
+      events.emit('player:healed', { hpGain: 1, armorGain: 0 });
+    }
+    this.emitStats();
+  }
+
+  public useKnightDualWield(): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.dualWieldTimer = 4.0;
+    this.sprite.setTint(0xfdba74);
+    audio.playPickup();
+
+    const ring = this.scene.add.circle(this.sprite.x, this.sprite.y, 26, 0xf97316, 0.3).setDepth(13);
+    this.scene.tweens.add({ targets: ring, scale: 1.5, alpha: 0, duration: 240, onComplete: () => ring.destroy() });
+  }
+
+  public useWizardFrostStorm(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    const baseAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+    audio.playChainLightning();
+
+    const offsets = [-0.36, -0.18, 0, 0.18, 0.36];
+    offsets.forEach((off, idx) => {
+      const ang = baseAngle + off;
+      pool.spawn({
+        x: this.sprite.x + Math.cos(ang) * 18,
+        y: this.sprite.y + Math.sin(ang) * 18,
+        angleRad: ang,
+        speed: 440,
+        damage: 5,
+        isPlayer: true,
+        isCrit: idx === 2,
+        element: idx % 2 === 0 ? 'frost' : 'lightning',
+        texture: 'bullet_ice_shard',
+        range: 460,
+        pierceCount: 2
+      });
+    });
+  }
+
+  public useVampireBatSwarm(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.vampireHealCharges = 1;
+    const baseAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+    audio.playSlash();
+
+    for (const off of [-0.5, -0.25, 0, 0.25, 0.5]) {
+      const ang = baseAngle + off;
+      pool.spawn({
+        x: this.sprite.x + Math.cos(ang) * 18,
+        y: this.sprite.y + Math.sin(ang) * 18,
+        angleRad: ang,
+        speed: 310,
+        damage: 4,
+        isPlayer: true,
+        isCrit: false,
+        isHoming: true,
+        element: 'vampire',
+        texture: 'bullet_crimson_bat',
+        range: 540
+      });
+    }
   }
 
   private triggerStatueBlessing(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
@@ -1038,9 +1141,9 @@ export class PlayerController {
       x: this.sprite.x,
       y: this.sprite.y,
       angle: aimAngle,
-      radius: 68,
-      arcDeg: 220,
-      damage: 18,
+      radius: 64,
+      arcDeg: 200,
+      damage: 11,
       isCrit: true
     });
   }
@@ -1095,8 +1198,8 @@ export class PlayerController {
           onComplete: () => blast.destroy()
         });
 
-        // Emit explosion event
-        events.emit('combat:explosion', { x: targetX, y: targetY, radius: 80, damage: 20 });
+        // Emit explosion event (rebalanced Alchemist flask damage)
+        events.emit('combat:explosion', { x: targetX, y: targetY, radius: 80, damage: 14 });
       }
     });
   }

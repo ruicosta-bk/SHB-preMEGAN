@@ -11,7 +11,7 @@ export interface Projectile {
   isPlayer: boolean;
   isCrit: boolean;
   isHoming: boolean;
-  element?: 'fire' | 'frost';
+  element?: 'fire' | 'frost' | 'lightning' | 'vampire';
   pierceRemaining: number;
   bouncesRemaining: number;
   rangeRemaining: number;
@@ -36,7 +36,7 @@ export class ProjectilePool {
     isPlayer: boolean;
     isCrit?: boolean;
     isHoming?: boolean;
-    element?: 'fire' | 'frost';
+    element?: 'fire' | 'frost' | 'lightning' | 'vampire';
     texture: string;
     range: number;
     pierceCount?: number;

@@ -7,26 +7,29 @@ import { audio } from '../core/AudioSystem';
 
 export class BossIgnis extends EnemyBase {
   public phase: number = 1;
-  private attackState: 'idle' | 'radial' | 'spiral' | 'slam_windup' | 'slam_execute' | 'vulnerable' = 'idle';
-  private stateTimer: number = 2.0; // Initial delay so player has time to prepare
+  private attackState: 'idle' | 'radial' | 'spiral' | 'cross' | 'slam_windup' | 'slam_execute' | 'vulnerable' = 'idle';
+  private stateTimer: number = 1.4; // Initial delay so player enters safely
   private currentAttackIndex: number = 0;
 
-  // Spiral state
+  // Spiral & Cross barrage state
   private spiralAngle: number = 0;
   private spiralBulletsFired: number = 0;
   private spiralTimer: number = 0;
+  private crossBurstsLeft: number = 0;
+  private crossTimer: number = 0;
 
   // Slam state
   private slamTargetX: number = 0;
   private slamTargetY: number = 0;
   private slamGraphic: Phaser.GameObjects.Graphics;
+  private pendingSummons: { type: string; x: number; y: number }[] | null = null;
 
   private stage: number = 1;
   private bossNameVi: string = 'Ignis Ignifer - Đại Pháp Sư Luyện Kim';
 
   constructor(scene: Phaser.Scene, x: number, y: number, stage: number = 1, bossNameVi?: string) {
-    const p1Hp = 130 + (stage - 1) * 45;
-    super(scene, x, y, 'boss_ignis_p1', p1Hp, 45 + (stage - 1) * 6);
+    const p1Hp = 165 + (stage - 1) * 55;
+    super(scene, x, y, 'boss_ignis_p1', p1Hp, 72 + (stage - 1) * 10);
     this.stage = stage;
     if (bossNameVi) this.bossNameVi = bossNameVi;
     if (stage === 2) {
@@ -44,6 +47,12 @@ export class BossIgnis extends EnemyBase {
     return 'boss_ignis';
   }
 
+  public consumeSummonRequest(): { type: string; x: number; y: number }[] | null {
+    const req = this.pendingSummons;
+    this.pendingSummons = null;
+    return req;
+  }
+
   public override takeDamage(damage: DamageInfo): DamageResult {
     if (this.isDead) {
       return { actualDamage: 0, absorbedByArmor: 0, hpDamage: 0, isDead: true, overkill: 0 };
@@ -51,20 +60,29 @@ export class BossIgnis extends EnemyBase {
 
     const amt = Math.max(0, damage.amount);
     this.hp -= amt;
-    this.hitFlashTimer = 0.1;
+    this.hitFlashTimer = 0.08;
     this.sprite.setTint(0xffffff);
     audio.playHitEnemy();
 
     // Check Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
-      const p2Hp = 100 + (this.stage - 1) * 40;
+      const p2Hp = 140 + (this.stage - 1) * 50;
       this.hp = p2Hp;
       this.maxHp = p2Hp;
+      this.speed = 92 + (this.stage - 1) * 12;
       this.sprite.setTexture('boss_ignis_p2');
       this.sprite.setTint(this.stage === 2 ? 0x38bdf8 : 0xff6666);
       this.attackState = 'vulnerable';
-      this.stateTimer = 2.0;
+      this.stateTimer = 0.85;
+
+      // Summon biome guards when entering enraged Phase 2
+      const guardA = this.stage === 2 ? 'frost_mage' : this.stage >= 3 ? 'fan_caster' : 'shooter';
+      const guardB = this.stage === 2 ? 'frost_knight' : this.stage >= 3 ? 'charger' : 'grunt';
+      this.pendingSummons = [
+        { type: guardA, x: this.sprite.x - 68, y: this.sprite.y - 24 },
+        { type: guardB, x: this.sprite.x + 68, y: this.sprite.y + 24 }
+      ];
 
       audio.playBossAlert();
 
@@ -108,16 +126,24 @@ export class BossIgnis extends EnemyBase {
 
     const dx = playerX - this.sprite.x;
     const dy = playerY - this.sprite.y;
+    const dist = Math.hypot(dx, dy);
 
     this.stateTimer -= deltaSec;
 
     switch (this.attackState) {
       case 'idle':
         this.slamGraphic.clear();
-        // Move slowly towards arena center
+        // Actively reposition/circle around player instead of standing still
+        if (dist > 110) {
+          this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed);
+        } else if (dist > 1) {
+          const strafeX = this.sprite.x + (-dy / dist) * 60;
+          const strafeY = this.sprite.y + (dx / dist) * 60;
+          this.moveTowardsWithObstacleAvoidance(strafeX, strafeY, deltaSec, walls, this.speed * 0.9);
+        }
+
         if (this.stateTimer <= 0) {
-          // Choose next attack in rotation
-          const attacks = ['radial', 'spiral', 'slam_windup'];
+          const attacks = ['radial', 'spiral', 'cross', 'slam_windup'] as const;
           this.currentAttackIndex = (this.currentAttackIndex + 1) % attacks.length;
           const nextAtk = attacks[this.currentAttackIndex];
 
@@ -125,142 +151,216 @@ export class BossIgnis extends EnemyBase {
             this.attackState = 'radial';
             this.executeRadialNova(playerX, playerY, pool);
             this.attackState = 'vulnerable';
-            this.stateTimer = this.phase === 1 ? 1.6 : 1.3;
+            this.stateTimer = this.phase === 1 ? 0.95 : 0.7;
           } else if (nextAtk === 'spiral') {
             this.attackState = 'spiral';
             this.spiralAngle = Math.atan2(dy, dx);
             this.spiralBulletsFired = 0;
             this.spiralTimer = 0;
             this.stateTimer = this.phase === 1 ? 1.5 : 1.8;
+          } else if (nextAtk === 'cross') {
+            this.attackState = 'cross';
+            this.crossBurstsLeft = this.phase === 1 ? 3 : 4;
+            this.crossTimer = 0;
+            this.spiralAngle = Math.atan2(dy, dx);
+            this.stateTimer = 1.6;
           } else if (nextAtk === 'slam_windup') {
             this.attackState = 'slam_windup';
-            this.slamTargetX = playerX;
-            this.slamTargetY = playerY;
-            this.stateTimer = this.phase === 1 ? 0.9 : 0.7; // Telegraph duration
+            this.slamTargetX = roomBounds ? Phaser.Math.Clamp(playerX, roomBounds.minX + 12, roomBounds.maxX - 12) : playerX;
+            this.slamTargetY = roomBounds ? Phaser.Math.Clamp(playerY, roomBounds.minY + 12, roomBounds.maxY - 12) : playerY;
+            this.stateTimer = this.phase === 1 ? 0.75 : 0.6;
           }
         }
         break;
 
       case 'spiral':
+        this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed * 0.55);
         this.spiralTimer += deltaSec;
-        const fireInterval = this.phase === 1 ? 0.08 : 0.06;
-        if (this.spiralTimer >= fireInterval && this.spiralBulletsFired < (this.phase === 1 ? 18 : 28)) {
+        const fireInterval = this.phase === 1 ? 0.075 : 0.055;
+        if (this.spiralTimer >= fireInterval && this.spiralBulletsFired < (this.phase === 1 ? 20 : 30)) {
           this.spiralTimer = 0;
           this.spiralBulletsFired++;
-          const angleStep = (Math.PI * 2) / 10;
-          this.spiralAngle += 0.28;
+          this.spiralAngle += 0.34;
 
           audio.playEnemyShoot();
-          // Fire spiral arm 1
           pool.spawn({
             x: this.sprite.x,
             y: this.sprite.y,
             angleRad: this.spiralAngle,
-            speed: this.phase === 1 ? 180 : 220,
+            speed: this.phase === 1 ? 200 : 240,
             damage: 2,
             isPlayer: false,
             texture: 'bullet_enemy_orb',
-            range: 450
+            range: 460
           });
 
-          // In phase 2, fire counter-rotating second arm
           if (this.phase === 2) {
             pool.spawn({
               x: this.sprite.x,
               y: this.sprite.y,
-              angleRad: -this.spiralAngle + Math.PI,
-              speed: 210,
+              angleRad: this.spiralAngle + (Math.PI * 2) / 3,
+              speed: 230,
               damage: 2,
               isPlayer: false,
               texture: 'bullet_boss_orb',
-              range: 450
+              range: 460
+            });
+            pool.spawn({
+              x: this.sprite.x,
+              y: this.sprite.y,
+              angleRad: this.spiralAngle + (Math.PI * 4) / 3,
+              speed: 230,
+              damage: 2,
+              isPlayer: false,
+              texture: 'bullet_boss_orb',
+              range: 460
             });
           }
         }
 
         if (this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 1.5 : 1.2;
+          this.stateTimer = this.phase === 1 ? 0.9 : 0.65;
+        }
+        break;
+
+      case 'cross':
+        this.crossTimer -= deltaSec;
+        if (this.crossTimer <= 0 && this.crossBurstsLeft > 0) {
+          this.crossBurstsLeft--;
+          this.crossTimer = this.phase === 1 ? 0.38 : 0.28;
+          this.spiralAngle += Math.PI / 4;
+          const arms = this.phase === 1 ? 4 : 6;
+          audio.playShootShotgun();
+          for (let i = 0; i < arms; i++) {
+            const ang = this.spiralAngle + (i / arms) * Math.PI * 2;
+            pool.spawn({
+              x: this.sprite.x + Math.cos(ang) * 18,
+              y: this.sprite.y + Math.sin(ang) * 18,
+              angleRad: ang,
+              speed: this.phase === 1 ? 250 : 285,
+              damage: 2,
+              isPlayer: false,
+              texture: 'bullet_enemy_laser',
+              range: 480
+            });
+          }
+        }
+        if (this.crossBurstsLeft <= 0 && this.stateTimer <= 0) {
+          this.attackState = 'vulnerable';
+          this.stateTimer = this.phase === 1 ? 0.9 : 0.65;
         }
         break;
 
       case 'slam_windup':
-        // Draw expanding ground warning circle at target location
         this.slamGraphic.clear();
-        this.slamGraphic.lineStyle(2.5, 0xef4444, 0.9);
-        this.slamGraphic.strokeCircle(this.slamTargetX, this.slamTargetY, 55);
-        this.slamGraphic.fillStyle(0xef4444, 0.2);
-        this.slamGraphic.fillCircle(this.slamTargetX, this.slamTargetY, 55);
+        this.slamGraphic.lineStyle(2.5, 0xef4444, 0.95);
+        this.slamGraphic.strokeCircle(this.slamTargetX, this.slamTargetY, 54);
+        this.slamGraphic.fillStyle(0xef4444, 0.22);
+        this.slamGraphic.fillCircle(this.slamTargetX, this.slamTargetY, 54);
 
-        // Hover slightly up
-        this.sprite.y -= 0.5;
+        this.sprite.y -= 0.4;
 
         if (this.stateTimer <= 0) {
           this.slamGraphic.clear();
           this.attackState = 'slam_execute';
-          this.executeSlam(pool);
+          this.executeSlam(playerX, playerY, pool, walls, roomBounds);
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 1.8 : 1.4;
+          this.stateTimer = this.phase === 1 ? 1.0 : 0.75;
         }
         break;
 
       case 'vulnerable':
         this.slamGraphic.clear();
-        // Boss pauses to catch breath / gather ether (perfect window to attack!)
-        this.sprite.setAlpha(0.85);
+        this.sprite.setAlpha(0.9);
         if (this.stateTimer <= 0) {
           this.sprite.setAlpha(1.0);
           this.attackState = 'idle';
-          this.stateTimer = 0.5;
+          this.stateTimer = this.phase === 1 ? 0.55 : 0.35;
         }
         break;
     }
   }
 
   private executeRadialNova(playerX: number, playerY: number, pool: ProjectilePool): void {
-    const totalBullets = 14;
+    const totalBullets = this.phase === 1 ? 14 : 18;
     const baseAngle = Math.atan2(playerY - this.sprite.y, playerX - this.sprite.x);
     audio.playShootShotgun();
 
-    // 14 pellets around the ring, with 2 deliberate gap sectors for player to dodge through
+    // Outer ring with deliberate safe dodge sectors
     for (let i = 0; i < totalBullets; i++) {
-      // Create safe gaps at index 3 and index 10
-      if (i === 3 || i === 10) continue;
+      if (i % 7 === 3) continue;
 
       const angle = baseAngle + (i / totalBullets) * Math.PI * 2;
       pool.spawn({
-        x: this.sprite.x + Math.cos(angle) * 25,
-        y: this.sprite.y + Math.sin(angle) * 25,
+        x: this.sprite.x + Math.cos(angle) * 24,
+        y: this.sprite.y + Math.sin(angle) * 24,
         angleRad: angle,
-        speed: this.phase === 1 ? 190 : 230,
+        speed: this.phase === 1 ? 205 : 245,
         damage: 2,
         isPlayer: false,
         texture: 'bullet_boss_orb',
         range: 480
       });
     }
+
+    // Plus a tight aimed 3-round volley directly toward player
+    for (const off of [-0.18, 0, 0.18]) {
+      pool.spawn({
+        x: this.sprite.x + Math.cos(baseAngle + off) * 24,
+        y: this.sprite.y + Math.sin(baseAngle + off) * 24,
+        angleRad: baseAngle + off,
+        speed: this.phase === 1 ? 265 : 300,
+        damage: 2,
+        isPlayer: false,
+        element: this.stage === 2 ? 'frost' : 'fire',
+        texture: this.stage === 2 ? 'bullet_enemy_frost' : 'bullet_enemy_orb',
+        range: 480
+      });
+    }
   }
 
-  private executeSlam(pool: ProjectilePool): void {
-    // Teleport/Leap to target position
+  private executeSlam(
+    playerX: number,
+    playerY: number,
+    pool: ProjectilePool,
+    walls: { x: number; y: number; width: number; height: number }[],
+    roomBounds?: { minX: number; maxX: number; minY: number; maxY: number }
+  ): void {
     this.sprite.setPosition(this.slamTargetX, this.slamTargetY);
-    this.shadow.setPosition(this.slamTargetX, this.slamTargetY + 8);
+    this.ensureUnstuck(walls, roomBounds);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y + 8);
 
-    audio.playShootShotgun();
-    this.scene.cameras.main.shake(200, 0.012);
+    audio.playExplosion();
+    this.scene.cameras.main.shake(220, 0.014);
 
-    // Shockwave ring of 8 expanding pellets
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2;
+    // 12-orb expanding shockwave ring + aimed follow-up shot
+    const count = this.phase === 1 ? 10 : 14;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
       pool.spawn({
         x: this.sprite.x,
         y: this.sprite.y,
         angleRad: angle,
-        speed: 150,
+        speed: this.phase === 1 ? 175 : 210,
         damage: 3,
         isPlayer: false,
         texture: 'bullet_enemy_orb',
-        range: 220
+        range: 280
+      });
+    }
+
+    const aimAng = Math.atan2(playerY - this.sprite.y, playerX - this.sprite.x);
+    for (const off of [-0.22, 0, 0.22]) {
+      pool.spawn({
+        x: this.sprite.x,
+        y: this.sprite.y,
+        angleRad: aimAng + off,
+        speed: 250,
+        damage: 2,
+        isPlayer: false,
+        texture: 'bullet_boss_orb',
+        range: 360
       });
     }
   }

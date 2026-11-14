@@ -62,8 +62,11 @@ export class EnemyCharger extends EnemyBase {
         );
         this.lineGraphic.strokePath();
 
-        // Shaking sprite
-        this.sprite.x += (Math.random() - 0.5) * 3;
+        // Subtle vibration during telegraph (never drifts into walls)
+        const jitterX = (Math.random() - 0.5) * 2.5;
+        if (!this.checkWallCollision(this.sprite.x + jitterX, this.sprite.y, 20, 20, walls)) {
+          this.sprite.x += jitterX;
+        }
 
         if (this.timer <= 0) {
           this.state = 'charging';

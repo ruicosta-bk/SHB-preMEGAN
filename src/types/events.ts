@@ -4,6 +4,7 @@ import { RoomState } from './room';
 
 export interface GameEvents {
   // Player state
+  'player:hero-selected': { skillShortLabelVi: string; accentHex: string; accentColor: number };
   'player:stats-changed': { hp: number; maxHp: number; armor: number; maxArmor: number; energy: number; maxEnergy: number };
   'player:dash-cooldown': { progress: number; isReady: boolean };
   'player:skill-cooldown': { progress: number; isReady: boolean };

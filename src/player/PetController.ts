@@ -71,10 +71,10 @@ export class PetController {
         this.sprite.setScale(1.0, 1.0 + Math.sin(this.bobPhase) * 0.05);
       }
 
-      // Trigger melee pounce if enemy within 195px
+      // Trigger melee pounce if enemy within 145px (compact range so lunge looks natural)
       if (this.attackCooldown <= 0 && enemies.length > 0) {
         let nearest: EnemyBase | null = null;
-        let nearestDist = 195;
+        let nearestDist = 145;
         for (const e of enemies) {
           if (e.isDead) continue;
           const eDist = Math.hypot(e.sprite.x - playerX, e.sprite.y - playerY);
@@ -86,7 +86,7 @@ export class PetController {
         if (nearest) {
           this.state = 'pounce';
           this.pounceTarget = nearest;
-          this.pounceTimer = 0.55;
+          this.pounceTimer = 0.45;
         }
       }
     } else if (this.state === 'pounce') {
@@ -100,26 +100,26 @@ export class PetController {
         const dy = target.sprite.y - this.sprite.y;
         const dist = Math.hypot(dx, dy);
         if (dist <= 22) {
-          // Execute clean melee bite / shock bump
+          // Execute clean melee bite / shock bump (rebalanced damage & cadence)
           const len = dist || 1;
           target.takeDamage({
-            amount: 3,
+            amount: 2,
             isCrit: false,
-            knockback: { x: dx / len, y: dy / len, force: 110 },
+            knockback: { x: dx / len, y: dy / len, force: 95 },
             isPlayerAttack: true
           });
           this.spawnBiteVfx(target.sprite.x, target.sprite.y, Math.atan2(dy, dx));
           audio.playHitEnemy();
-          this.attackCooldown = 1.6;
+          this.attackCooldown = 2.1;
           this.state = 'return';
           this.pounceTarget = null;
         } else {
-          const speed = 430;
+          const speed = 340;
           this.sprite.x += (dx / dist) * speed * deltaSec;
           this.sprite.y += (dy / dist) * speed * deltaSec;
           this.sprite.setFlipX(dx < 0);
           this.sprite.setTexture('pet_golem_2');
-          this.sprite.setScale(1.12, 0.88);
+          this.sprite.setScale(1.08, 0.92);
         }
       }
     } else if (this.state === 'return') {
@@ -130,7 +130,7 @@ export class PetController {
         this.state = 'follow';
         this.sprite.setScale(1.0, 1.0);
       } else {
-        const speed = 340;
+        const speed = 310;
         this.sprite.x += (dx / dist) * speed * deltaSec;
         this.sprite.y += (dy / dist) * speed * deltaSec;
         this.sprite.setFlipX(dx < 0);
@@ -139,17 +139,6 @@ export class PetController {
     }
 
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 9);
-
-    // 2. Magnetize nearby coins strongly toward player
-    for (const p of pickups) {
-      if (p.type !== 'coin') continue;
-      const cDist = Math.hypot(playerX - p.sprite.x, playerY - p.sprite.y);
-      if (cDist > 24 && cDist < 180) {
-        const ang = Math.atan2(playerY - p.sprite.y, playerX - p.sprite.x);
-        p.sprite.x += Math.cos(ang) * 260 * deltaSec;
-        p.sprite.y += Math.sin(ang) * 260 * deltaSec;
-      }
-    }
 
     // 3. Occasional enemy bullet guard (every 6s) with subtle ready indicator
     this.guardRing.clear();

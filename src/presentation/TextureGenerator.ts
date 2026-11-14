@@ -439,10 +439,12 @@ export class TextureGenerator {
       ctx.fillRect(x, y, w, h);
     };
 
+    type HeroVisualClass = 'alchemist' | 'rogue' | 'vanguard' | 'knight' | 'wizard' | 'vampire';
+
     const drawHeroSprite = (
       key: string,
-      classId: 'alchemist' | 'rogue' | 'vanguard',
-      colors: { outline: string; body: string; bodyHi: string; hood: string; visor: string; trim: string },
+      classId: HeroVisualClass,
+      colors: { outline: string; body: string; bodyHi: string; hood: string; eye: string; trim: string; skin: string },
       runOffset: number,
       isHurt: boolean = false
     ) => {
@@ -451,73 +453,138 @@ export class TextureGenerator {
       const b = isHurt ? '#ef4444' : colors.body;
       const bh = isHurt ? '#f87171' : colors.bodyHi;
       const hd = isHurt ? '#dc2626' : colors.hood;
-      const vs = isHurt ? '#ffffff' : colors.visor;
+      const ey = isHurt ? '#ffffff' : colors.eye;
       const tr = isHurt ? '#fde047' : colors.trim;
+      const sk = isHurt ? '#fecaca' : colors.skin;
       const bob = runOffset === 0 ? 0 : -1;
 
-      // Flowing cape / scarf tail behind hero
-      if (classId === 'rogue') {
-        const tailLift = runOffset === 1 ? -1 : runOffset === 2 ? 1 : 0;
-        px(ctx, o, 2, 11 + tailLift, 6, 6);
-        px(ctx, tr, 3, 12 + tailLift, 4, 4);
-        px(ctx, o, 1, 14 + tailLift, 4, 4);
-        px(ctx, tr, 2, 15 + tailLift, 2, 2);
+      // Flowing Scarf / Cape behind character (adds Soul Knight dynamism)
+      const tailLift = runOffset === 1 ? -1 : runOffset === 2 ? 1 : 0;
+      if (classId === 'rogue' || classId === 'knight' || classId === 'wizard') {
+        px(ctx, o, 2, 12 + bob + tailLift, 6, 5);
+        px(ctx, tr, 3, 13 + bob + tailLift, 4, 3);
+        px(ctx, o, 1, 15 + bob + tailLift, 4, 3);
+        px(ctx, tr, 2, 16 + bob + tailLift, 2, 1);
+      } else if (classId === 'vampire') {
+        // High pointed Dracula cloak behind shoulders & hips
+        px(ctx, o, 3, 10 + bob, 22, 13);
+        px(ctx, tr, 4, 11 + bob, 20, 11);
+        px(ctx, '#450a0a', 5, 14 + bob, 18, 7);
       } else {
         px(ctx, o, 5, 13 + bob, 18, 10);
         px(ctx, hd, 6, 14 + bob, 16, 8);
       }
 
-      // Rounded Chibi Head Silhouette (outline)
-      px(ctx, o, 7, 3 + bob, 14, 12);
-      px(ctx, o, 6, 5 + bob, 16, 9);
-      px(ctx, o, 9, 2 + bob, 10, 13);
+      // Head / Hat / Hair Base (no boxy Among-Us shape!)
+      px(ctx, o, 7, 4 + bob, 14, 11);
+      px(ctx, o, 8, 3 + bob, 12, 12);
 
-      // Class-specific Hat / Crest / Headgear
       if (classId === 'alchemist') {
-        // Pointed wizard/alchemist hood + flared brim
-        px(ctx, o, 9, 0 + bob, 8, 4);
-        px(ctx, hd, 10, 1 + bob, 6, 3);
-        px(ctx, o, 5, 5 + bob, 18, 3);
-        px(ctx, bh, 6, 6 + bob, 16, 1);
-        px(ctx, hd, 7, 3 + bob, 14, 5);
+        // Hooded alchemist cap + brass forehead goggles + dark green mask with bright cyan eyes
+        px(ctx, hd, 8, 4 + bob, 12, 10);
+        px(ctx, bh, 9, 4 + bob, 10, 3);
+        px(ctx, '#090b10', 9, 9 + bob, 10, 4);
+        // Brass goggles on brow
+        px(ctx, tr, 8, 6 + bob, 5, 3);
+        px(ctx, tr, 15, 6 + bob, 5, 3);
+        px(ctx, '#bae6fd', 9, 7 + bob, 3, 1);
+        px(ctx, '#bae6fd', 16, 7 + bob, 3, 1);
+        // Crisp 2x2 glowing eyes inside lower hood (separated by nose bridge)
+        px(ctx, ey, 10, 10 + bob, 2, 2);
+        px(ctx, ey, 16, 10 + bob, 2, 2);
+        // Scarf wrap around neck
+        px(ctx, tr, 8, 13 + bob, 12, 2);
       } else if (classId === 'rogue') {
-        // Sleek assassin cowl + headband
-        px(ctx, hd, 7, 4 + bob, 14, 9);
-        px(ctx, bh, 8, 4 + bob, 12, 3);
-        px(ctx, tr, 7, 6 + bob, 14, 2); // Crimson ninja headband
-      } else {
-        // Vanguard Knight horned/plumed helm
+        // Fluffy crimson-auburn tousled hair + lower ninja bandana (Soul Knight Rogue style!)
+        px(ctx, o, 6, 2 + bob, 16, 5);
+        px(ctx, bh, 7, 3 + bob, 14, 4);
+        px(ctx, '#f43f5e', 9, 2 + bob, 8, 2); // spiky hair tuft
+        px(ctx, '#fb7185', 6, 4 + bob, 3, 3);
+        // Face skin upper + crisp dark bandana lower
+        px(ctx, sk, 8, 7 + bob, 12, 3);
+        px(ctx, '#090b10', 10, 7 + bob, 2, 2);
+        px(ctx, '#090b10', 16, 7 + bob, 2, 2);
+        px(ctx, tr, 8, 10 + bob, 12, 4); // crimson face mask
+        px(ctx, '#9f1239', 10, 11 + bob, 8, 2);
+      } else if (classId === 'vanguard') {
+        // Paladin silver-gold helm with signature vertical gold cross-guard ("T" visor)
         px(ctx, o, 11, 0 + bob, 6, 4);
-        px(ctx, tr, 12, 1 + bob, 4, 3); // Gold helmet crest plume
-        px(ctx, hd, 7, 4 + bob, 14, 9);
-        px(ctx, '#cbd5e1', 8, 4 + bob, 12, 3); // Top steel gleam
+        px(ctx, tr, 12, 1 + bob, 4, 3); // top crest
+        px(ctx, hd, 8, 4 + bob, 12, 10);
+        px(ctx, '#e2e8f0', 9, 4 + bob, 10, 3);
+        // Separate left & right eye slits split by golden nose bridge (NOT one wide bar!)
+        px(ctx, '#090b10', 9, 8 + bob, 4, 3);
+        px(ctx, '#090b10', 15, 8 + bob, 4, 3);
+        px(ctx, tr, 13, 6 + bob, 2, 7); // golden Paladin vertical cross bar
+        px(ctx, ey, 10, 9 + bob, 2, 2);
+        px(ctx, ey, 16, 9 + bob, 2, 2);
+      } else if (classId === 'knight') {
+        // Classic Soul Knight Silver Kettle Helm with open peach face + dark crisp chibi eyes
+        px(ctx, o, 11, 1 + bob, 6, 3);
+        px(ctx, tr, 12, 2 + bob, 4, 2); // small gold helm plume
+        px(ctx, hd, 8, 4 + bob, 12, 5);
+        px(ctx, '#e2e8f0', 9, 4 + bob, 10, 2); // steel shine
+        // Warm skin face inside open visor arch
+        px(ctx, hd, 8, 8 + bob, 2, 6);
+        px(ctx, hd, 18, 8 + bob, 2, 6);
+        px(ctx, sk, 10, 8 + bob, 8, 6);
+        // Chibi vertical eyes
+        px(ctx, ey, 11, 9 + bob, 2, 3);
+        px(ctx, ey, 15, 9 + bob, 2, 3);
+        // Orange-gold scarf around chin
+        px(ctx, tr, 8, 13 + bob, 12, 3);
+      } else if (classId === 'wizard') {
+        // Soul Knight Wizard: tall pointed hat + wide curved brim + peach skin + magenta scarf
+        px(ctx, o, 11, 0 + bob, 7, 4);
+        px(ctx, hd, 12, 1 + bob, 5, 3);
+        px(ctx, o, 4, 5 + bob, 20, 3);
+        px(ctx, hd, 5, 6 + bob, 18, 2);
+        px(ctx, tr, 8, 5 + bob, 12, 1); // hat ribbon
+        // Spiky magenta bangs + warm face + dark chibi eyes
+        px(ctx, sk, 9, 8 + bob, 10, 5);
+        px(ctx, '#f472b6', 8, 8 + bob, 2, 3);
+        px(ctx, '#f472b6', 18, 8 + bob, 2, 3);
+        px(ctx, ey, 11, 9 + bob, 2, 2);
+        px(ctx, ey, 15, 9 + bob, 2, 2);
+        px(ctx, '#fecaca', 10, 11 + bob, 1, 1); // blush
+        px(ctx, '#fecaca', 17, 11 + bob, 1, 1);
+        // Magenta neck scarf
+        px(ctx, tr, 8, 13 + bob, 12, 2);
+      } else {
+        // Soul Knight Vampire: swept dark widow's-peak hair, pale gray face, crisp eyes, crimson collar
+        px(ctx, o, 7, 2 + bob, 14, 5);
+        px(ctx, hd, 8, 3 + bob, 12, 4);
+        px(ctx, hd, 13, 6 + bob, 2, 2); // widow's peak center dip
+        px(ctx, sk, 8, 7 + bob, 12, 7);
+        px(ctx, '#090b10', 10, 9 + bob, 2, 2);
+        px(ctx, '#090b10', 16, 9 + bob, 2, 2);
+        px(ctx, ey, 10, 9 + bob, 1, 1); // subtle crimson iris glint
+        px(ctx, ey, 16, 9 + bob, 1, 1);
+        px(ctx, tr, 7, 12 + bob, 3, 3); // flared left collar
+        px(ctx, tr, 18, 12 + bob, 3, 3); // flared right collar
       }
 
-      // Face Visor Recess & Expressive Chibi Eyes
-      px(ctx, '#090b10', 9, 8 + bob, 10, 5);
-      px(ctx, vs, 10, 9 + bob, 3, 3);
-      px(ctx, vs, 15, 9 + bob, 3, 3);
-      px(ctx, '#ffffff', 11, 9 + bob, 1, 2);
-      px(ctx, '#ffffff', 16, 9 + bob, 1, 2);
-
-      // Rounded Torso + Pauldrons + Belt
-      px(ctx, o, 6, 14 + bob, 16, 10);
-      px(ctx, b, 7, 15 + bob, 14, 8);
-      px(ctx, bh, 9, 15 + bob, 10, 5);
+      // Rounded Chibi Torso + Class Details + Belt
+      px(ctx, o, 6, 15 + bob, 16, 9);
+      px(ctx, b, 7, 16 + bob, 14, 7);
+      px(ctx, bh, 9, 16 + bob, 10, 4);
       if (classId === 'vanguard') {
-        // Wide steel shoulder pauldrons
-        px(ctx, o, 4, 14 + bob, 5, 6);
-        px(ctx, '#94a3b8', 5, 15 + bob, 3, 4);
-        px(ctx, o, 19, 14 + bob, 5, 6);
-        px(ctx, '#94a3b8', 20, 15 + bob, 3, 4);
+        px(ctx, o, 4, 15 + bob, 5, 6);
+        px(ctx, '#cbd5e1', 5, 16 + bob, 3, 4);
+        px(ctx, o, 19, 15 + bob, 5, 6);
+        px(ctx, '#cbd5e1', 20, 16 + bob, 3, 4);
+      } else if (classId === 'vampire') {
+        // Ruby pendant & pale cravat
+        px(ctx, '#e2e8f0', 12, 16 + bob, 4, 4);
+        px(ctx, '#ef4444', 13, 17 + bob, 2, 2);
       }
       // Belt & Emblem clasp
-      px(ctx, '#1e293b', 7, 20 + bob, 14, 2);
-      px(ctx, tr, 12, 19 + bob, 4, 3);
+      px(ctx, '#1e293b', 7, 21 + bob, 14, 2);
+      px(ctx, tr, 12, 20 + bob, 4, 3);
 
       // Animated Boots
-      const lY = runOffset === 1 ? 22 : runOffset === 2 ? 25 : 24;
-      const rY = runOffset === 2 ? 22 : runOffset === 1 ? 25 : 24;
+      const lY = runOffset === 1 ? 23 : runOffset === 2 ? 25 : 24;
+      const rY = runOffset === 2 ? 23 : runOffset === 1 ? 25 : 24;
       px(ctx, o, 7, lY, 5, 5);
       px(ctx, '#475569', 8, lY + 1, 3, 3);
       px(ctx, o, 16, rY, 5, 5);
@@ -528,27 +595,57 @@ export class TextureGenerator {
 
     const alchemistPalette = {
       outline: '#090b10',
-      body: '#1e3a5f',
-      bodyHi: '#2563eb',
-      hood: '#0f2744',
-      visor: '#38bdf8',
-      trim: '#f59e0b'
+      body: '#115e59',
+      bodyHi: '#0d9488',
+      hood: '#0f766e',
+      eye: '#38bdf8',
+      trim: '#f59e0b',
+      skin: '#fbd3b6'
     };
     const roguePalette = {
       outline: '#090b10',
-      body: '#1e1b4b',
-      bodyHi: '#4338ca',
-      hood: '#0f172a',
-      visor: '#f43f5e',
-      trim: '#e11d48'
+      body: '#1e293b',
+      bodyHi: '#be123c',
+      hood: '#334155',
+      eye: '#090b10',
+      trim: '#e11d48',
+      skin: '#fbd3b6'
     };
     const vanguardPalette = {
       outline: '#090b10',
+      body: '#1d4ed8',
+      bodyHi: '#3b82f6',
+      hood: '#94a3b8',
+      eye: '#38bdf8',
+      trim: '#facc15',
+      skin: '#fbd3b6'
+    };
+    const knightPalette = {
+      outline: '#090b10',
       body: '#475569',
-      bodyHi: '#94a3b8',
-      hood: '#64748b',
-      visor: '#facc15',
-      trim: '#d97706'
+      bodyHi: '#64748b',
+      hood: '#94a3b8',
+      eye: '#090b10',
+      trim: '#f97316',
+      skin: '#fbd3b6'
+    };
+    const wizardPalette = {
+      outline: '#090b10',
+      body: '#3b0764',
+      bodyHi: '#6b21a8',
+      hood: '#92400e',
+      eye: '#090b10',
+      trim: '#db2777',
+      skin: '#fbd3b6'
+    };
+    const vampirePalette = {
+      outline: '#090b10',
+      body: '#18181b',
+      bodyHi: '#27272a',
+      hood: '#0f172a',
+      eye: '#ef4444',
+      trim: '#b91c1c',
+      skin: '#cbd5e1'
     };
 
     drawHeroSprite('player_idle', 'alchemist', alchemistPalette, 0, false);
@@ -556,7 +653,7 @@ export class TextureGenerator {
     drawHeroSprite('player_run_2', 'alchemist', alchemistPalette, 2, false);
     drawHeroSprite('player_hurt', 'alchemist', alchemistPalette, 0, true);
 
-    const registerClass = (prefix: string, cid: 'alchemist' | 'rogue' | 'vanguard', palette: typeof alchemistPalette) => {
+    const registerClass = (prefix: string, cid: HeroVisualClass, palette: typeof alchemistPalette) => {
       drawHeroSprite(`${prefix}_idle`, cid, palette, 0, false);
       drawHeroSprite(`${prefix}_run_1`, cid, palette, 1, false);
       drawHeroSprite(`${prefix}_run_2`, cid, palette, 2, false);
@@ -566,6 +663,9 @@ export class TextureGenerator {
     registerClass('hero_alchemist', 'alchemist', alchemistPalette);
     registerClass('hero_rogue', 'rogue', roguePalette);
     registerClass('hero_vanguard', 'vanguard', vanguardPalette);
+    registerClass('hero_knight', 'knight', knightPalette);
+    registerClass('hero_wizard', 'wizard', wizardPalette);
+    registerClass('hero_vampire', 'vampire', vampirePalette);
   }
 
   private static createPetFrames(tm: Phaser.Textures.TextureManager): void {
@@ -621,27 +721,29 @@ export class TextureGenerator {
       ctx.fillRect(x, y, w, h);
     };
 
-    // 1. Grunt (26x26): Horned Goblin/Gargoyle Raider with club
+    // 1. Grunt (26x26): Green/Slate Horned Goblin Raider with nose, fangs & shield
     let ctx = this.createCanvas(tm, 'enemy_grunt', 26, 26);
-    // Pointed goblin ears & horns
-    px(ctx, '#090b10', 2, 5, 5, 4);
-    px(ctx, '#090b10', 19, 5, 5, 4);
-    px(ctx, '#64748b', 3, 6, 3, 2);
-    px(ctx, '#64748b', 20, 6, 3, 2);
-    // Rounded head & torso
+    // Pointed goblin ears
+    px(ctx, '#090b10', 2, 6, 5, 4);
+    px(ctx, '#090b10', 19, 6, 5, 4);
+    px(ctx, '#65a30d', 3, 7, 3, 2);
+    px(ctx, '#65a30d', 20, 7, 3, 2);
+    // Head & torso
     px(ctx, '#090b10', 6, 3, 14, 18);
     px(ctx, '#090b10', 5, 6, 16, 13);
-    px(ctx, '#475569', 7, 4, 12, 9);
-    px(ctx, '#64748b', 8, 4, 10, 4);
-    // Fierce eyes & fanged mouth
-    px(ctx, '#090b10', 8, 8, 10, 3);
-    px(ctx, '#ef4444', 9, 8, 3, 2);
-    px(ctx, '#ef4444', 14, 8, 3, 2);
-    px(ctx, '#fef08a', 10, 8, 1, 1);
-    px(ctx, '#fef08a', 15, 8, 1, 1);
-    // Ragged leather vest + iron club in right hand
+    px(ctx, '#4d7c0f', 7, 4, 12, 9);
+    px(ctx, '#84cc16', 8, 4, 10, 4);
+    // Expressive eyes directly on skin + hooked nose + white fangs (no black visor bar!)
+    px(ctx, '#090b10', 9, 7, 2, 2);
+    px(ctx, '#090b10', 15, 7, 2, 2);
+    px(ctx, '#ef4444', 9, 7, 2, 1);
+    px(ctx, '#ef4444', 15, 7, 2, 1);
+    px(ctx, '#365314', 12, 8, 2, 2);
+    px(ctx, '#ffffff', 10, 11, 1, 2);
+    px(ctx, '#ffffff', 15, 11, 1, 2);
+    // Leather tunic + iron club
     px(ctx, '#78350f', 7, 13, 12, 7);
-    px(ctx, '#92400e', 9, 14, 8, 4);
+    px(ctx, '#b45309', 9, 14, 8, 4);
     px(ctx, '#090b10', 20, 10, 5, 9);
     px(ctx, '#94a3b8', 21, 11, 3, 5);
     px(ctx, '#78350f', 22, 16, 2, 2);
@@ -650,21 +752,22 @@ export class TextureGenerator {
     px(ctx, '#090b10', 15, 21, 4, 4);
     this.refresh(tm, 'enemy_grunt');
 
-    // 2. Shooter (26x28): Pointed Hood Cultist Sniper with scope rifle
+    // 2. Shooter (26x28): Hooded Cultist Sniper with cyclops targeting scope & cloak
     ctx = this.createCanvas(tm, 'enemy_shooter', 26, 28);
     px(ctx, '#090b10', 9, 1, 8, 4);
     px(ctx, '#090b10', 6, 4, 14, 19);
     px(ctx, '#090b10', 5, 11, 16, 11);
-    px(ctx, '#4c1d95', 7, 5, 12, 9);
-    px(ctx, '#6d28d9', 10, 2, 6, 4);
-    // Dark face + golden targeting monocle
-    px(ctx, '#090b10', 8, 8, 10, 5);
-    px(ctx, '#facc15', 13, 8, 5, 4);
+    px(ctx, '#5b21b6', 7, 5, 12, 9);
+    px(ctx, '#7c3aed', 10, 2, 6, 4);
+    // Hood opening with shadowed face, left purple pupil & right brass sniper scope
+    px(ctx, '#1e1b4b', 8, 8, 10, 5);
+    px(ctx, '#c084fc', 9, 9, 2, 2);
+    px(ctx, '#facc15', 14, 8, 4, 4);
     px(ctx, '#ef4444', 15, 9, 2, 2);
-    px(ctx, '#a855f7', 9, 9, 2, 2);
+    px(ctx, '#4c1d95', 8, 12, 10, 2); // scarf wrap
     // Robe cloak + sniper rifle
     px(ctx, '#3b0764', 7, 14, 12, 8);
-    px(ctx, '#581c87', 9, 14, 8, 6);
+    px(ctx, '#6d28d9', 9, 14, 8, 6);
     px(ctx, '#090b10', 14, 14, 11, 5);
     px(ctx, '#94a3b8', 15, 15, 9, 2);
     px(ctx, '#ef4444', 22, 15, 2, 2);
@@ -672,79 +775,70 @@ export class TextureGenerator {
     px(ctx, '#090b10', 15, 23, 4, 4);
     this.refresh(tm, 'enemy_shooter');
 
-    // 3. Fan Caster (28x28): Horned Flame Cultist with fire wisps
+    // 3. Fan Caster (28x28): Horned Flame Cultist with demonic yellow eyes & fire orbs
     ctx = this.createCanvas(tm, 'enemy_fan_caster', 28, 28);
-    // Curved obsidian demon horns
     px(ctx, '#090b10', 5, 1, 4, 6);
     px(ctx, '#090b10', 19, 1, 4, 6);
-    px(ctx, '#f97316', 6, 2, 2, 3);
-    px(ctx, '#f97316', 20, 2, 2, 3);
-    // Head & robe
+    px(ctx, '#fbbf24', 6, 2, 2, 3);
+    px(ctx, '#fbbf24', 20, 2, 2, 3);
     px(ctx, '#090b10', 7, 4, 14, 20);
     px(ctx, '#090b10', 5, 12, 18, 11);
-    px(ctx, '#9a3412', 8, 5, 12, 9);
-    px(ctx, '#ea580c', 10, 5, 8, 4);
-    // Glowing demonic mask eyes
-    px(ctx, '#090b10', 9, 9, 10, 4);
-    px(ctx, '#fde047', 10, 10, 3, 2);
-    px(ctx, '#fde047', 15, 10, 3, 2);
-    px(ctx, '#7c2d12', 7, 14, 14, 9);
+    px(ctx, '#991b1b', 8, 5, 12, 9);
+    px(ctx, '#dc2626', 10, 5, 8, 4);
+    // Sharp eyes directly on crimson skin + fierce frown
+    px(ctx, '#fde047', 10, 9, 2, 2);
+    px(ctx, '#fde047', 16, 9, 2, 2);
+    px(ctx, '#090b10', 11, 12, 6, 1);
+    px(ctx, '#7f1d1d', 7, 14, 14, 9);
     px(ctx, '#f59e0b', 12, 15, 4, 6);
-    // Floating fire orbs in hands
     px(ctx, '#f97316', 2, 13, 4, 4);
     px(ctx, '#fef08a', 3, 14, 2, 2);
     px(ctx, '#f97316', 22, 13, 4, 4);
     px(ctx, '#fef08a', 23, 14, 2, 2);
     this.refresh(tm, 'enemy_fan_caster');
 
-    // 4. Charger (30x28): Iron War-Boar / Mech-Bull with tusks & furnace core
+    // 4. Charger (30x28): Armored Iron War-Boar with curved ivory tusks & glowing nose-ring
     ctx = this.createCanvas(tm, 'enemy_charger', 30, 28);
-    // Armored body silhouette
     px(ctx, '#090b10', 4, 5, 22, 18);
     px(ctx, '#090b10', 2, 9, 26, 11);
-    px(ctx, '#3f3f46', 5, 6, 20, 16);
+    px(ctx, '#52525b', 5, 6, 20, 16);
     px(ctx, '#71717a', 7, 7, 16, 7);
-    // Curved silver bull horns / tusks
+    // Curved ivory bull tusks
     px(ctx, '#090b10', 1, 5, 5, 6);
     px(ctx, '#090b10', 24, 5, 5, 6);
-    px(ctx, '#e2e8f0', 2, 6, 3, 4);
-    px(ctx, '#e2e8f0', 25, 6, 3, 4);
-    // Angry glowing furnace eyes + magma chest core
-    px(ctx, '#090b10', 8, 10, 14, 4);
-    px(ctx, '#f97316', 9, 11, 4, 2);
-    px(ctx, '#f97316', 17, 11, 4, 2);
+    px(ctx, '#fef3c7', 2, 6, 3, 4);
+    px(ctx, '#fef3c7', 25, 6, 3, 4);
+    // Eyes on armor plate + brass nose snout
+    px(ctx, '#f97316', 9, 10, 3, 2);
+    px(ctx, '#f97316', 18, 10, 3, 2);
+    px(ctx, '#f59e0b', 13, 13, 4, 2);
     px(ctx, '#090b10', 12, 16, 6, 4);
     px(ctx, '#fb923c', 13, 17, 4, 2);
-    // Heavy iron hooves
     px(ctx, '#090b10', 6, 23, 5, 4);
     px(ctx, '#090b10', 19, 23, 5, 4);
     this.refresh(tm, 'enemy_charger');
 
-    // 5. Frost Mage (26x28): Crowned Cryomancer with crystal staff
+    // 5. Frost Mage (26x28): Crowned Cryomancer with frosty beard & crystal staff
     ctx = this.createCanvas(tm, 'enemy_frost_mage', 26, 28);
-    // 3-prong ice crystal crown
     px(ctx, '#090b10', 7, 0, 12, 5);
     px(ctx, '#38bdf8', 8, 2, 2, 3);
     px(ctx, '#67e8f9', 12, 0, 2, 5);
     px(ctx, '#38bdf8', 16, 2, 2, 3);
-    // Hood & fur-lined icy cloak
     px(ctx, '#090b10', 6, 4, 14, 20);
-    px(ctx, '#0e7490', 7, 5, 12, 10);
-    px(ctx, '#090b10', 8, 8, 10, 4);
-    px(ctx, '#cffafe', 9, 9, 3, 2);
-    px(ctx, '#cffafe', 14, 9, 3, 2);
-    // White fur collar + teal robe
-    px(ctx, '#e0f2fe', 6, 13, 14, 3);
+    px(ctx, '#0e7490', 7, 5, 12, 8);
+    px(ctx, '#bae6fd', 9, 8, 8, 4); // pale frosty face
+    px(ctx, '#0369a1', 10, 9, 2, 2);
+    px(ctx, '#0369a1', 14, 9, 2, 2);
+    px(ctx, '#f0f9ff', 7, 12, 12, 4); // snow-white fur collar & beard
     px(ctx, '#155e75', 7, 16, 12, 7);
     px(ctx, '#22d3ee', 11, 16, 4, 6);
-    // Floating crystal ice staff
     px(ctx, '#090b10', 21, 7, 4, 16);
     px(ctx, '#78350f', 22, 12, 2, 10);
     px(ctx, '#67e8f9', 21, 7, 4, 5);
     px(ctx, '#ffffff', 22, 8, 2, 2);
     this.refresh(tm, 'enemy_frost_mage');
 
-    // 6. Frost Knight (28x28): Glacial Armored Paladin with Horned Ice Helm & Spear
+    // 6. Frost Knight (28x28): Glacial Paladin Helm with icy nose-guard & spear
     ctx = this.createCanvas(tm, 'enemy_frost_knight', 28, 28);
     px(ctx, '#090b10', 4, 1, 4, 6);
     px(ctx, '#090b10', 20, 1, 4, 6);
@@ -752,13 +846,15 @@ export class TextureGenerator {
     px(ctx, '#e0f2fe', 21, 2, 2, 4);
     px(ctx, '#090b10', 6, 4, 16, 20);
     px(ctx, '#0284c7', 7, 5, 14, 9);
-    px(ctx, '#38bdf8', 8, 5, 12, 4);
-    px(ctx, '#090b10', 9, 9, 10, 4);
-    px(ctx, '#22d3ee', 10, 10, 3, 2);
-    px(ctx, '#22d3ee', 15, 10, 3, 2);
+    px(ctx, '#38bdf8', 8, 5, 12, 3);
+    // Split glacial helm visor with steel nose bridge
+    px(ctx, '#090b10', 9, 9, 4, 3);
+    px(ctx, '#090b10', 15, 9, 4, 3);
+    px(ctx, '#e0f2fe', 13, 8, 2, 5);
+    px(ctx, '#22d3ee', 10, 10, 2, 2);
+    px(ctx, '#22d3ee', 16, 10, 2, 2);
     px(ctx, '#1e3a8a', 7, 14, 14, 9);
     px(ctx, '#bae6fd', 12, 15, 4, 6);
-    // Glacial halberd/spear on right side
     px(ctx, '#090b10', 22, 3, 5, 20);
     px(ctx, '#94a3b8', 24, 9, 2, 13);
     px(ctx, '#67e8f9', 22, 4, 4, 6);
@@ -917,6 +1013,32 @@ export class TextureGenerator {
     ctx.fillStyle = '#fda4af';
     ctx.beginPath(); ctx.arc(7, 7, 2.5, 0, Math.PI * 2); ctx.fill();
     this.refresh(tm, 'bullet_enemy_orb');
+
+    // Wizard Piercing Ice-Storm Bolt (18x10)
+    ctx = this.createCanvas(tm, 'bullet_ice_shard', 18, 10);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath(); ctx.moveTo(17, 5); ctx.lineTo(5, 1); ctx.lineTo(1, 5); ctx.lineTo(5, 9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath(); ctx.moveTo(16, 5); ctx.lineTo(6, 2); ctx.lineTo(2, 5); ctx.lineTo(6, 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e0f2fe';
+    ctx.fillRect(5, 4, 8, 2);
+    this.refresh(tm, 'bullet_ice_shard');
+
+    // Vampire Crimson Bat Homing Projectile (16x12)
+    ctx = this.createCanvas(tm, 'bullet_crimson_bat', 16, 12);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(1, 2, 5, 6);
+    ctx.fillRect(10, 2, 5, 6);
+    ctx.fillRect(5, 4, 6, 6);
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(2, 3, 4, 4);
+    ctx.fillRect(10, 3, 4, 4);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(6, 5, 4, 4);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(6, 6, 1, 1);
+    ctx.fillRect(9, 6, 1, 1);
+    this.refresh(tm, 'bullet_crimson_bat');
 
     // Enemy Frost Orb
     ctx = this.createCanvas(tm, 'bullet_enemy_frost', 14, 14);

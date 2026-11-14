@@ -328,9 +328,9 @@ export class MainScene extends Phaser.Scene {
       this.uiScene.hud.renderMinimap(floorRooms, 0);
     }
 
-    // Setup Camera for gameplay (1.4x zoom gives excellent pixel clarity)
+    // Setup Camera for gameplay (1.5x zoom frames compact Soul Knight rooms crisply)
     this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
-    this.cameras.main.setZoom(1.4);
+    this.cameras.main.setZoom(1.5);
     this.floatingNumbers.showNotice(playerSpawnX, playerSpawnY - 36, `TẦNG ${meta.code}: ${meta.biomeNameVi.toUpperCase()}`, meta.accentHex);
   }
 
@@ -509,7 +509,7 @@ export class MainScene extends Phaser.Scene {
     this.checkProjectileHits();
 
     // 6. Check Pickups Proximity
-    this.updatePickupsProximity();
+    this.updatePickupsProximity(deltaSec);
   }
 
   private transitionToRoom(targetRoomIdx: number, spawnX: number, spawnY: number): void {
@@ -557,18 +557,26 @@ export class MainScene extends Phaser.Scene {
 
             if (p.element === 'fire') {
               StatusManager.applyStatus(enemy as any, 'burn', 2.5, 2, 0.5);
+            } else if (p.element === 'frost') {
+              StatusManager.applyStatus(enemy as any, 'freeze', 1.6, 0, 1.0, 0.5);
+            } else if (p.element === 'vampire') {
+              this.player.onVampireBatHit();
             }
 
-            // Soul Knight tactile feel: Crit screen shake & Chain Lightning shock
-            if (p.isCrit) {
-              this.cameras.main.shake(140, 0.012);
+            // Soul Knight tactile feel: Crit screen shake & Chain Lightning shock (safe instance lookup!)
+            if (p.isCrit || p.element === 'lightning') {
+              if (p.isCrit) {
+                this.cameras.main.shake(120, 0.01);
+              }
               const chainTargets = StatusManager.findChainTargets(enemy, this.roomManager.activeEnemies, 130, 2);
               if (chainTargets.length > 0) {
                 audio.playChainLightning();
                 for (const ct of chainTargets) {
-                  this.drawLightningArc(enemy.sprite.x, enemy.sprite.y, ct.x, ct.y);
-                  (ct as any).takeDamage({
-                    amount: Math.max(1, Math.ceil(p.damage * 0.7)),
+                  const targetEnemy = this.roomManager.activeEnemies.find(e => e.id === ct.id && !e.isDead);
+                  if (!targetEnemy) continue;
+                  this.drawLightningArc(enemy.sprite.x, enemy.sprite.y, targetEnemy.sprite.x, targetEnemy.sprite.y);
+                  targetEnemy.takeDamage({
+                    amount: Math.max(1, Math.ceil(p.damage * 0.65)),
                     isCrit: false,
                     element: 'lightning',
                     isPlayerAttack: true
@@ -585,6 +593,8 @@ export class MainScene extends Phaser.Scene {
             }
           }
         }
+
+        if (!p.active) continue;
 
         // 2. Player bullet hitting interactive barrels & crates
         if (this.roomManager.interactiveProps) {
@@ -686,27 +696,42 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  private updatePickupsProximity(): void {
+  private updatePickupsProximity(deltaSec: number): void {
     const px = this.player.sprite.x;
     const py = this.player.sprite.y;
+    const roomCleared = this.roomManager.getCurrentRoom()?.isCleared ?? false;
+    const magnetRadius = roomCleared ? 360 : 175;
+    const magnetSpeed = roomCleared ? 540 : 420;
+    const collectRadius = 28;
 
     this.nearestPickup = null;
     let closestDist = 999;
 
-    for (const p of this.roomManager.pickups) {
+    for (let i = this.roomManager.pickups.length - 1; i >= 0; i--) {
+      const p = this.roomManager.pickups[i];
+      if (!p || !p.sprite.active) continue;
       const dist = Math.hypot(px - p.sprite.x, py - p.sprite.y);
 
-      // Magnetic coin pickup: pull towards player if <90px, auto-collect if <24px
-      if (p.type === 'coin') {
-        if (dist < 90) {
+      // Generous Soul Knight magnetic pull for coins, energy crystals, and hearts
+      if (p.type === 'coin' || p.type === 'energy' || p.type === 'heart') {
+        if (dist < magnetRadius && dist > 1) {
           const angle = Math.atan2(py - p.sprite.y, px - p.sprite.x);
-          p.sprite.x += Math.cos(angle) * 320 * 0.016;
-          p.sprite.y += Math.sin(angle) * 320 * 0.016;
+          const pull = Math.min(dist, magnetSpeed * deltaSec);
+          p.sprite.x += Math.cos(angle) * pull;
+          p.sprite.y += Math.sin(angle) * pull;
         }
-        if (dist < 24) {
-          this.player.addCoins(p.data || 1);
-          audio.playCoinPickup();
-          this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y, `+${p.data || 1} Vàng`, '#f59e0b');
+        if (dist < collectRadius) {
+          if (p.type === 'coin') {
+            this.player.addCoins(p.data || 1);
+            audio.playCoinPickup();
+            this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y, `+${p.data || 1} Vàng`, '#f59e0b');
+          } else if (p.type === 'heart') {
+            this.player.heal(p.data || 2, 0);
+            this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y, `+${p.data || 2} Máu`, '#ef4444');
+          } else {
+            this.player.heal(0, p.data || 25);
+            this.floatingNumbers.showNotice(p.sprite.x, p.sprite.y, `+${p.data || 25} NL`, '#38bdf8');
+          }
           this.removePickup(p);
           continue;
         }
@@ -717,19 +742,6 @@ export class MainScene extends Phaser.Scene {
         this.removePickup(p);
         this.advanceFromPortal();
         return;
-      }
-
-      // Auto-collect hearts and energy on overlap (<24px)
-      if (dist < 24) {
-        if (p.type === 'heart') {
-          this.player.heal(p.data || 2, 0);
-          this.removePickup(p);
-          continue;
-        } else if (p.type === 'energy') {
-          this.player.heal(0, p.data || 25);
-          this.removePickup(p);
-          continue;
-        }
       }
 
       // Check interaction proximity for Chest, Altar, Statue, Portal, Weapon, Shop Item (<48px)

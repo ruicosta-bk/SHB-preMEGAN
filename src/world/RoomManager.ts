@@ -389,10 +389,51 @@ export class RoomManager {
     }
   }
 
+  private resolveClearSpawnPos(rawX: number, rawY: number, room: RoomState): { x: number; y: number } {
+    const blockers = [...this.staticWallColliders, ...this.interactiveProps.getObstacleColliders()];
+    const minX = room.worldX + 46;
+    const maxX = room.worldX + room.width - 46;
+    const minY = room.worldY + 46;
+    const maxY = room.worldY + room.height - 46;
+
+    const isBlocked = (x: number, y: number): boolean => {
+      if (x < minX || x > maxX || y < minY || y > maxY) return true;
+      const r = 13;
+      for (const b of blockers) {
+        if (x + r > b.x && x - r < b.x + b.width && y + r > b.y && y - r < b.y + b.height) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const startX = Phaser.Math.Clamp(rawX, minX, maxX);
+    const startY = Phaser.Math.Clamp(rawY, minY, maxY);
+    if (!isBlocked(startX, startY)) {
+      return { x: startX, y: startY };
+    }
+
+    const dirs = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]
+    ];
+    for (let radius = 16; radius <= 128; radius += 16) {
+      for (const [dx, dy] of dirs) {
+        const tx = startX + dx * radius;
+        const ty = startY + dy * radius;
+        if (!isBlocked(tx, ty)) {
+          return { x: tx, y: ty };
+        }
+      }
+    }
+    return { x: room.worldX + room.width / 2, y: room.worldY + room.height / 2 };
+  }
+
   private spawnEnemyList(room: RoomState, spawns: EnemySpawnDef[]): void {
     for (const sp of spawns) {
-      const worldPosX = room.worldX + sp.x * room.width;
-      const worldPosY = room.worldY + sp.y * room.height;
+      const rawX = room.worldX + sp.x * room.width;
+      const rawY = room.worldY + sp.y * room.height;
+      const { x: worldPosX, y: worldPosY } = this.resolveClearSpawnPos(rawX, rawY, room);
 
       let enemy: EnemyBase | null = null;
       if (sp.type === 'grunt') {
@@ -423,8 +464,11 @@ export class RoomManager {
     this.pendingWaveTimer = 0.75;
 
     for (const sp of waveSpawns) {
-      const wx = room.worldX + sp.x * room.width;
-      const wy = room.worldY + sp.y * room.height;
+      const { x: wx, y: wy } = this.resolveClearSpawnPos(
+        room.worldX + sp.x * room.width,
+        room.worldY + sp.y * room.height,
+        room
+      );
       const marker = this.scene.add.sprite(wx, wy, 'spawn_marker_x').setDepth(4).setAlpha(0.9);
       this.scene.tweens.add({
         targets: marker,
@@ -511,6 +555,18 @@ export class RoomManager {
         continue;
       }
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
+
+      if (enemy instanceof BossIgnis && this.activeEnemies.length < 5) {
+        const summons = enemy.consumeSummonRequest();
+        if (summons && summons.length > 0) {
+          const normSpawns = summons.map(s => ({
+            type: s.type,
+            x: (s.x - curRoom.worldX) / curRoom.width,
+            y: (s.y - curRoom.worldY) / curRoom.height
+          }));
+          this.spawnEnemyList(curRoom, normSpawns);
+        }
+      }
     }
 
     // 4b. Handle telegraphed multi-wave reinforcements

@@ -127,4 +127,31 @@ describe('DungeonGenerator Unit Tests', () => {
     const f6Boss = floor6Rooms.find(r => r.type === 'boss')!;
     expect(f6Boss.enemySpawns[0].type).toBe('boss_ignis');
   });
+
+  it('never spawns enemies inside walls, pillars, or crates across seeds and floors', () => {
+    for (const seed of [101, 777, 2026, 4040]) {
+      for (const floor of [1, 3, 6]) {
+        const rooms = DungeonGenerator.generateFloor(seed, floor);
+        for (const r of rooms) {
+          const allWaves = [r.enemySpawns, ...(r.waves || [])];
+          for (const wave of allWaves) {
+            for (const sp of wave) {
+              const tx = Math.floor(sp.x * r.layout.width);
+              const ty = Math.floor(sp.y * r.layout.height);
+              expect(tx).toBeGreaterThanOrEqual(1);
+              expect(tx).toBeLessThanOrEqual(r.layout.width - 2);
+              expect(ty).toBeGreaterThanOrEqual(1);
+              expect(ty).toBeLessThanOrEqual(r.layout.height - 2);
+              for (const w of r.layout.walls) {
+                expect(tx === w.x && ty === w.y).toBe(false);
+              }
+              for (const c of r.layout.crates || []) {
+                expect(tx === c.x && ty === c.y).toBe(false);
+              }
+            }
+          }
+        }
+      }
+    }
+  });
 });

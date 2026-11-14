@@ -27,14 +27,14 @@ export class TitleScreen {
     // Decorative alchemy rune circles
     const runeGfx = this.scene.add.graphics();
     runeGfx.lineStyle(2, 0xd97706, 0.22);
-    runeGfx.strokeCircle(640, 100, 130);
-    runeGfx.strokeCircle(640, 100, 92);
+    runeGfx.strokeCircle(640, 74, 110);
+    runeGfx.strokeCircle(640, 74, 78);
     this.container.add(runeGfx);
 
     // Game Title
-    const title = this.scene.add.text(640, 62, 'EMBER VAULT', {
+    const title = this.scene.add.text(640, 44, 'EMBER VAULT', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
-      fontSize: '44px',
+      fontSize: '38px',
       color: '#f59e0b',
       fontStyle: 'bold',
       stroke: '#000000',
@@ -42,61 +42,71 @@ export class TitleScreen {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const subtitle = this.scene.add.text(640, 108, 'CHỌN ANH HÙNG & CHINH PHỤC HẦM NGỤC GIẢ KIM', {
+    const subtitle = this.scene.add.text(640, 84, 'CHỌN 1 TRONG 6 ANH HÙNG & CHINH PHỤC HẦM NGỤC', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
-      fontSize: '15px',
+      fontSize: '14px',
       color: '#38bdf8',
       stroke: '#000000',
       strokeThickness: 4
     }).setOrigin(0.5);
     this.container.add(subtitle);
 
-    // 3 Hero Class Selection Cards
-    const cardW = 300;
-    const cardH = 192;
-    const gap = 22;
-    const startX = 640 - (cardW * 3 + gap * 2) / 2 + cardW / 2;
-    const cardY = 242;
+    // 6 Hero Class Selection Cards in crisp 3 x 2 Grid
+    const cardW = 356;
+    const cardH = 132;
+    const gapX = 22;
+    const gapY = 14;
+    const cols = 3;
+    const gridStartX = 640 - (cardW * cols + gapX * (cols - 1)) / 2 + cardW / 2;
+    const gridStartY = 186;
+
+    const getCardPos = (idx: number) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      return {
+        cx: gridStartX + col * (cardW + gapX),
+        cy: gridStartY + row * (cardH + gapY)
+      };
+    };
 
     const cardBgs: Map<HeroId, Phaser.GameObjects.Graphics> = new Map();
 
     const redrawCards = () => {
-      for (const h of HERO_LIST) {
+      HERO_LIST.forEach((h, idx) => {
         const g = cardBgs.get(h.id);
-        if (!g) continue;
-        const idx = HERO_LIST.indexOf(h);
-        const cx = startX + idx * (cardW + gap);
+        if (!g) return;
+        const { cx, cy } = getCardPos(idx);
         const isSel = this.selectedHeroId === h.id;
         g.clear();
         g.fillStyle(isSel ? 0x1e293b : 0x111827, 0.94);
-        g.fillRoundedRect(cx - cardW / 2, cardY - cardH / 2, cardW, cardH, 10);
+        g.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
         g.lineStyle(isSel ? 3 : 1.5, isSel ? h.accentColor : 0x374151, isSel ? 1 : 0.8);
-        g.strokeRoundedRect(cx - cardW / 2, cardY - cardH / 2, cardW, cardH, 10);
-      }
+        g.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
+      });
     };
 
     HERO_LIST.forEach((hero, idx) => {
-      const cx = startX + idx * (cardW + gap);
+      const { cx, cy } = getCardPos(idx);
       const bg = this.scene.add.graphics();
       cardBgs.set(hero.id, bg);
       this.container.add(bg);
 
-      const heroSprite = this.scene.add.sprite(cx - 102, cardY - 46, `${hero.texturePrefix}_idle`).setScale(2.4);
+      const heroSprite = this.scene.add.sprite(cx - 134, cy - 22, `${hero.texturePrefix}_idle`).setScale(2.15);
       this.container.add(heroSprite);
 
       const weaponData = WEAPONS[hero.startWeapon];
-      const weaponIcon = this.scene.add.sprite(cx + 116, cardY - 54, weaponData.iconTexture).setScale(1.1);
+      const weaponIcon = this.scene.add.sprite(cx + 144, cy - 36, weaponData.iconTexture).setScale(1.05);
       this.container.add(weaponIcon);
 
-      const nameText = this.scene.add.text(cx - 64, cardY - 68, hero.nameVi, {
+      const nameText = this.scene.add.text(cx - 94, cy - 46, hero.nameVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '16px',
+        fontSize: '15px',
         color: hero.accentHex,
         fontStyle: 'bold'
       }).setOrigin(0, 0.5);
       this.container.add(nameText);
 
-      const roleText = this.scene.add.text(cx - 64, cardY - 47, hero.roleVi, {
+      const roleText = this.scene.add.text(cx - 94, cy - 27, hero.roleVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
         fontSize: '11px',
         color: '#94a3b8'
@@ -104,53 +114,41 @@ export class TitleScreen {
       this.container.add(roleText);
 
       const statsText = this.scene.add.text(
-        cx - 132,
-        cardY - 12,
-        `Máu: ${hero.hp}   |   Giáp: ${hero.armor}   |   NL: ${hero.maxEnergy}`,
+        cx - 94,
+        cy - 8,
+        `Máu: ${hero.hp} | Giáp: ${hero.armor} | NL: ${hero.maxEnergy}`,
         {
           fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '12px',
+          fontSize: '11px',
           color: '#e2e8f0',
           fontStyle: 'bold'
         }
       ).setOrigin(0, 0.5);
       this.container.add(statsText);
 
-      const weaponLine = this.scene.add.text(
-        cx - 132,
-        cardY + 10,
-        `Khởi đầu: ${weaponData.nameVi}`,
-        {
-          fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '11px',
-          color: '#cbd5e1'
-        }
-      ).setOrigin(0, 0.5);
-      this.container.add(weaponLine);
-
       const skillTitle = this.scene.add.text(
-        cx - 132,
-        cardY + 34,
-        `[F] ${hero.skillNameVi}`,
+        cx - 158,
+        cy + 15,
+        `[F] ${hero.skillNameVi} (${weaponData.nameVi})`,
         {
           fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '12px',
+          fontSize: '11.5px',
           color: '#fbbf24',
           fontStyle: 'bold'
         }
       ).setOrigin(0, 0.5);
       this.container.add(skillTitle);
 
-      const skillDesc = this.scene.add.text(cx - 132, cardY + 50, hero.skillDescVi, {
+      const skillDesc = this.scene.add.text(cx - 158, cy + 28, hero.skillDescVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
         fontSize: '11px',
-        color: '#94a3b8',
-        wordWrap: { width: cardW - 28 },
-        lineSpacing: 3
+        color: '#cbd5e1',
+        wordWrap: { width: cardW - 36 },
+        lineSpacing: 2
       }).setOrigin(0, 0);
       this.container.add(skillDesc);
 
-      const cardZone = this.scene.add.zone(cx, cardY, cardW, cardH).setInteractive({ useHandCursor: true });
+      const cardZone = this.scene.add.zone(cx, cy, cardW, cardH).setInteractive({ useHandCursor: true });
       this.container.add(cardZone);
       cardZone.on('pointerdown', () => {
         audio.init();
@@ -166,12 +164,12 @@ export class TitleScreen {
     // Controls Guide Panel
     const ctrlBg = this.scene.add.graphics();
     ctrlBg.fillStyle(0x111827, 0.85);
-    ctrlBg.fillRoundedRect(310, 360, 660, 150, 10);
+    ctrlBg.fillRoundedRect(290, 422, 700, 128, 10);
     ctrlBg.lineStyle(1.5, 0x374151, 0.8);
-    ctrlBg.strokeRoundedRect(310, 360, 660, 150, 10);
+    ctrlBg.strokeRoundedRect(290, 422, 700, 128, 10);
     this.container.add(ctrlBg);
 
-    const ctrlTitle = this.scene.add.text(640, 378, 'HƯỚNG DẪN & BẠN ĐỒNG HÀNH CƠ KHÍ', {
+    const ctrlTitle = this.scene.add.text(640, 439, 'HƯỚNG DẪN ĐIỀU KHIỂN & ĐỒNG HÀNH', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '13px',
       color: '#f59e0b',
@@ -180,13 +178,13 @@ export class TitleScreen {
     this.container.add(ctrlTitle);
 
     const ctrlItems = [
-      'WASD / Mũi tên: Di chuyển mượt  |  Chuột trái: Ngắm & Bắn 360°',
+      'WASD / Mũi tên: Di chuyển  |  Chuột trái: Ngắm & Bắn 360°',
       'Space: Lướt né đòn (bất tử 0.2s)  |  F / Chuột phải: Tuyệt Kỹ Anh Hùng',
-      'Q: Đổi vũ khí  |  E: Nhặt đồ, Mở rương, Cầu nguyện Tượng Thần, Mua Shop',
-      'Golem Cơ Khí luôn đi cùng: tự bắn hỗ trợ, nhặt vàng từ xa & chặn 1 viên đạn mỗi 6s'
+      'Q: Đổi vũ khí  |  E: Nhặt đồ, Mở rương, Tượng Thần, Máy Nước & Lò Rèn',
+      'Cáo Lửa Đồng Hành: tự lao tấn công tầm gần & chặn 1 viên đạn mỗi 6s; tự hút vàng/NL/máu từ xa'
     ];
     ctrlItems.forEach((text, i) => {
-      const line = this.scene.add.text(640, 405 + i * 24, text, {
+      const line = this.scene.add.text(640, 464 + i * 22, text, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
         fontSize: '12px',
         color: '#e2e8f0'
@@ -196,8 +194,8 @@ export class TitleScreen {
 
     // Start Button
     const btnW = 280;
-    const btnH = 52;
-    const btnY = 576;
+    const btnH = 50;
+    const btnY = 608;
 
     const btnBg = this.scene.add.graphics();
     btnBg.fillStyle(0xd97706, 1.0);

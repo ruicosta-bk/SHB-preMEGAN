@@ -34,6 +34,11 @@ export class HUD {
   private bossNameText: Phaser.GameObjects.Text;
   private bossHpText: Phaser.GameObjects.Text;
 
+  // Dynamic Hero Skill Label
+  private skillShortLabel: string = 'BÌNH HỎA';
+  private skillColorHex: string = '#ef4444';
+  private skillColorNum: number = 0xef4444;
+
   // Minimap
   private minimapGraphics: Phaser.GameObjects.Graphics;
   private roomTitleText: Phaser.GameObjects.Text;
@@ -169,6 +174,13 @@ export class HUD {
       this.updateSkill(data.progress, data.isReady);
     });
 
+    events.on('player:hero-selected', (data: { skillShortLabelVi: string; accentHex: string; accentColor: number }) => {
+      this.skillShortLabel = data.skillShortLabelVi || 'KỸ NĂNG';
+      this.skillColorHex = data.accentHex || '#ef4444';
+      this.skillColorNum = data.accentColor || 0xef4444;
+      this.updateSkill(1, true);
+    });
+
     events.on('player:weapon-swapped', (data: any) => {
       this.updateWeapons(data.current, data.secondary);
     });
@@ -249,11 +261,11 @@ export class HUD {
     this.skillBar.fillStyle(0x3f3f46, 0.8);
     this.skillBar.fillRect(startX, 116, barW, barH);
 
-    this.skillBar.fillStyle(isReady ? 0xef4444 : 0x71717a, 1.0);
+    this.skillBar.fillStyle(isReady ? this.skillColorNum : 0x71717a, 1.0);
     this.skillBar.fillRect(startX, 116, barW * progress, barH);
 
-    this.skillText.setText(isReady ? 'BÌNH HỎA [F]: SẴN SÀNG' : 'BÌNH HỎA: ĐANG HỒI...');
-    this.skillText.setColor(isReady ? '#ef4444' : '#94a3b8');
+    this.skillText.setText(isReady ? `${this.skillShortLabel} [F]: SẴN SÀNG` : `${this.skillShortLabel}: ĐANG HỒI...`);
+    this.skillText.setColor(isReady ? this.skillColorHex : '#94a3b8');
   }
 
   public updateWeapons(cur: WeaponData, sec: WeaponData | null): void {

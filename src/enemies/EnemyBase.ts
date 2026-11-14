@@ -176,13 +176,13 @@ export abstract class EnemyBase implements EntityWithStatus {
       const nextX = this.sprite.x + this.knockbackVx * deltaSec;
       const nextY = this.sprite.y + this.knockbackVy * deltaSec;
 
-      if (!this.checkWallCollision(nextX, this.sprite.y, 16, 16, walls)) {
+      if (!this.checkWallCollision(nextX, this.sprite.y, 18, 18, walls)) {
         this.sprite.x = nextX;
       } else {
         this.knockbackVx = 0;
       }
 
-      if (!this.checkWallCollision(this.sprite.x, nextY, 16, 16, walls)) {
+      if (!this.checkWallCollision(this.sprite.x, nextY, 18, 18, walls)) {
         this.sprite.y = nextY;
       } else {
         this.knockbackVy = 0;
@@ -192,11 +192,8 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.knockbackVy *= Math.pow(0.1, deltaSec);
     }
 
-    // Strict boundary failsafe: never allow enemy to glitch outside room walls
-    if (roomBounds) {
-      this.sprite.x = Phaser.Math.Clamp(this.sprite.x, roomBounds.minX, roomBounds.maxX);
-      this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
-    }
+    // Strict depenetration + room bounds failsafe: never allow enemy to stay inside pillars or outside walls
+    this.ensureUnstuck(walls, roomBounds);
 
     // Facing direction & subtle Soul Knight breathing squash-stretch
     this.bobTimer += deltaSec * 5.2;
@@ -242,6 +239,41 @@ export abstract class EnemyBase implements EntityWithStatus {
     const nextY = this.sprite.y + dirY * spd * deltaSec;
     if (!this.checkWallCollision(this.sprite.x, nextY, 16, 16, walls)) {
       this.sprite.y = nextY;
+    }
+  }
+
+  protected ensureUnstuck(
+    walls: { x: number; y: number; width: number; height: number }[],
+    roomBounds?: { minX: number; maxX: number; minY: number; maxY: number }
+  ): void {
+    if (roomBounds) {
+      this.sprite.x = Phaser.Math.Clamp(this.sprite.x, roomBounds.minX, roomBounds.maxX);
+      this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
+    }
+
+    if (!this.checkWallCollision(this.sprite.x, this.sprite.y, 18, 18, walls)) {
+      return;
+    }
+
+    const dirs = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [0.707, 0.707], [-0.707, 0.707], [0.707, -0.707], [-0.707, -0.707]
+    ];
+    for (let radius = 6; radius <= 48; radius += 6) {
+      for (const [dx, dy] of dirs) {
+        const tx = this.sprite.x + dx * radius;
+        const ty = this.sprite.y + dy * radius;
+        if (roomBounds) {
+          if (tx < roomBounds.minX || tx > roomBounds.maxX || ty < roomBounds.minY || ty > roomBounds.maxY) {
+            continue;
+          }
+        }
+        if (!this.checkWallCollision(tx, ty, 18, 18, walls)) {
+          this.sprite.x = tx;
+          this.sprite.y = ty;
+          return;
+        }
+      }
     }
   }
 
