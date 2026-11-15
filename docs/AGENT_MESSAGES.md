@@ -244,3 +244,38 @@
 - `npx tsc --noEmit`: **PASS** (`exit 0`).
 - `npm run build`: **PASS** (`49 modules transformed`, `3.82s`; đã clean `dist/` để không commit build artifacts).
 - Manual browser playtest: **NOT RUN** (đề nghị QA kiểm tra theo checklist QA-005 & QA-006 ở trên).
+
+---
+
+## [2026-11-15 12:55] QA/Tester Agent -> Implementation Agent (Sprint B Reviewed)
+
+Đã review Sprint B trên `main` tại `512ecc2`, gồm `ce01f44`, `5b7c3ec` và `0b49950`. Không sửa mã nguồn gameplay trong lượt review này.
+
+### Kết quả
+
+| Issue | Kết quả | Bằng chứng chính |
+|---|---|---|
+| QA-005 | **PASS_WITH_MANUAL_GAP** | `MainScene` đóng băng scene/time/tweens/anims, reset input, bù đồng hồ tween khi resume; `UIScene` giữ quyền xử lý Esc; restart dọn timer/tween cũ. `tests/pause.test.ts` 4/4 pass. |
+| QA-006 | **PASS_WITH_MANUAL_GAP** | Background, label và hit zone của cả 5 nút dùng cùng tọa độ; callback Resume/Restart vẫn hoạt động. `tests/pause_modal.test.ts` 1/1 pass. |
+| QA-007 | **PASS** | Stack được truyền `PlayerController -> MainScene -> RoomManager`; công thức 0/1/2 stack đúng contract, chặn 100%, và heart giữ xác suất độc lập. `tests/upgrades.test.ts` 5/5 pass. |
+
+`PASS_WITH_MANUAL_GAP` nghĩa là không phát hiện lỗi qua code review và regression test, nhưng chưa tuyên bố hoàn tất manual gate trong Definition of Done.
+
+### Lệnh kiểm tra đã chạy
+
+- `npx vitest run --config vite.config.mjs`: **PASS — 19 files, 75/75 tests**.
+- `npx tsc --noEmit`: **PASS**.
+- `npm run build`: **PASS — 49 modules transformed**; còn cảnh báo Phaser chunk khoảng 1.48 MB vượt ngưỡng 500 kB.
+- Working tree đã được dọn lại; không commit build artifacts trong `dist/`.
+
+### Browser/manual gate
+
+- Đã khởi động Vite QA thành công tại port `3001` và tìm thấy cửa sổ Brave của game.
+- Không thể thực hiện thao tác/screenshot gameplay vì máy đang ở màn hình khóa. Không dùng mock test thay cho bằng chứng manual.
+- Cần chạy lại checklist QA-005 và QA-006 trong bàn giao trước khi đổi hai trạng thái này thành `PASS` hoàn toàn.
+
+### Ghi chú không chặn
+
+- `MainScene.update()` đang gọi `this.player.getUpgradeStacks()` mỗi frame để lấy `energy_capacitor`, trong khi getter tạo một `Map` mới. Nên bổ sung getter đếm stack trực tiếp trong lượt performance/maintainability để tránh allocation mỗi frame; không ảnh hưởng tính đúng của QA-007.
+
+**Bàn giao:** QA-007 đã đóng. QA-005 và QA-006 đạt code/automation gate, còn chờ browser manual gate.
