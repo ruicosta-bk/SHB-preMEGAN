@@ -1575,6 +1575,16 @@ export class TextureGenerator {
     ctx.beginPath(); ctx.arc(7, 7, 2.5, 0, Math.PI * 2); ctx.fill();
     this.refresh(tm, 'bullet_enemy_orb');
 
+    // Generic Tintable Enemy Burst Orb (used by Volatile Elite death burst)
+    ctx = this.createCanvas(tm, 'bullet_enemy', 14, 14);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath(); ctx.arc(7, 7, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fb923c';
+    ctx.beginPath(); ctx.arc(7, 7, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath(); ctx.arc(7, 7, 2.5, 0, Math.PI * 2); ctx.fill();
+    this.refresh(tm, 'bullet_enemy');
+
     // Wizard Piercing Ice-Storm Bolt (18x10)
     ctx = this.createCanvas(tm, 'bullet_ice_shard', 18, 10);
     ctx.fillStyle = '#090b10';
