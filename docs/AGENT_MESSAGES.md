@@ -279,3 +279,31 @@
 - `MainScene.update()` đang gọi `this.player.getUpgradeStacks()` mỗi frame để lấy `energy_capacitor`, trong khi getter tạo một `Map` mới. Nên bổ sung getter đếm stack trực tiếp trong lượt performance/maintainability để tránh allocation mỗi frame; không ảnh hưởng tính đúng của QA-007.
 
 **Bàn giao:** QA-007 đã đóng. QA-005 và QA-006 đạt code/automation gate, còn chờ browser manual gate.
+
+---
+
+## [2026-11-15 21:25] Implementation Agent -> QA/Tester Agent (Post-Sprint B Fixes & Lobby Carousel)
+
+Đã `git pull` bản review `c23486e` và hoàn thành 3 cập nhật theo phản hồi trực tiếp từ người chơi + ghi chú hiệu năng của QA:
+
+1. **`599bcee` — `fix(textures)`: Sửa lỗi đạn quái hiện ô vuông đen viền xanh `__MISSING`**
+   - **Nguyên nhân gốc:** Khi quái Elite mang nội tại `volatile` chết (`src/world/RoomManager.ts`), vòng 6 viên đạn nổ truyền `texture: 'bullet_enemy'`, nhưng `TextureGenerator.ts` chưa sinh texture `'bullet_enemy'`.
+   - **Thay đổi:** Sinh texture `'bullet_enemy'` (14x14 cam-vàng tương thích `tint: 0xf97316`) trong `src/presentation/TextureGenerator.ts`; bổ sung `tests/textures.test.ts` (1 test) tự động đối chiếu toàn bộ key `bullet_*`, `enemy_*`, `boss_*`, `icon_*`, `hand_*`, `upg_*` dùng trong `src/` với `TextureGenerator.ts`.
+
+2. **`7cdc253` — `feat(ui)`: Đổi chọn tướng ở Sảnh thành băng chuyền ngang xoay vòng + điều khiển phím**
+   - **Thay đổi:** Thay lưới `4x2` trong `src/ui/TitleScreen.ts` bằng carousel ngang xoay vòng 8 tướng (hiển thị 5 slot theo chiều sâu + nút `◀` / `▶` + chấm chỉ báo `1..8` + tween xoay mượt `185ms` chống bay ngang khi bọc vòng).
+   - **Điều khiển phím:** `ArrowRight`/`D` xoay phải, `ArrowLeft`/`A` xoay trái, `1`/`2` đổi `[S1]`/`[S2]`, `Enter` vào trận; tự gắn/gỡ listener trong `show()` / `hide()` / `destroy()` để không rò rỉ vào gameplay.
+   - **Test:** `tests/title_screen.test.ts` (2 tests) kiểm tra wrap index, layout đối xứng 5 slot, phím mũi tên/`A`/`D`/`1`/`2`/`Enter` và dọn listener khi ẩn.
+
+3. **`f62614b` — `perf(upgrades)`: Xử lý ghi chú không chặn của QA tại `c23486e`**
+   - Thêm `PlayerController.getUpgradeStackCount(id)` và gọi trực tiếp trong `MainScene.update()` thay cho `getUpgradeStacks().get(...)` nhằm tránh cấp phát `Map` mới mỗi frame (`tests/upgrades.test.ts`).
+
+### Kiểm tra sau commit code cuối (`f62614b`)
+- `npx vitest run --config vite.config.mjs`: **PASS — 21 files, 78/78 tests** (`1.42s`).
+- `npx tsc --noEmit`: **PASS** (`exit 0`).
+- `npm run build`: **PASS** (49 modules, `3.65s`; đã dọn `dist/`).
+
+### Checklist manual gợi ý cho lượt QA/Playtest tiếp theo
+1. Vào Sảnh, thử bấm `→`/`←` (hoặc `D`/`A`), nút `◀`/`▶`, `1`/`2` đổi Skill và nhấn `Enter` → carousel xoay vòng mượt 8 tướng, không kẹt hay lệch chữ, nhấn `Enter` vào thẳng run với đúng tướng + skill đã chọn; trong lúc đang chơi nhấn `→`/`Enter` không được làm gì liên quan tới TitleScreen.
+2. Đánh quái Elite có vòng nổ cam (`volatile`) cho tới khi chết → 6 viên đạn văng ra hiển thị quả cầu cam bình thường, không còn ô vuông viền xanh `__MISSING`.
+3. Chạy nốt manual playtest checklist QA-005 và QA-006 từ lượt trước khi thuận tiện.
