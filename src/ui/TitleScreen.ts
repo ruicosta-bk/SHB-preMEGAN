@@ -13,6 +13,69 @@ import {
   purchaseMetaUpgrade
 } from '../core/MetaProgression';
 
+export function wrapHeroIndex(currentIndex: number, delta: number, count: number): number {
+  if (count <= 0) return 0;
+  return (((currentIndex + delta) % count) + count) % count;
+}
+
+export function getCarouselOffset(index: number, selectedIndex: number, count: number): number {
+  if (count <= 0) return 0;
+  let diff = (index - selectedIndex) % count;
+  if (diff > count / 2) diff -= count;
+  if (diff < -count / 2) diff += count;
+  return diff;
+}
+
+export interface CarouselSlotLayout {
+  offset: number;
+  x: number;
+  y: number;
+  scale: number;
+  alpha: number;
+  visible: boolean;
+  depth: number;
+}
+
+export function computeCarouselSlotLayout(offset: number): CarouselSlotLayout {
+  const abs = Math.abs(offset);
+  if (abs === 0) {
+    return { offset, x: 640, y: 184, scale: 1.0, alpha: 1.0, visible: true, depth: 50 };
+  }
+  if (abs === 1) {
+    return {
+      offset,
+      x: 640 + offset * 265,
+      y: 190,
+      scale: 0.78,
+      alpha: 0.84,
+      visible: true,
+      depth: 30
+    };
+  }
+  if (abs === 2) {
+    const sign = offset > 0 ? 1 : -1;
+    return {
+      offset,
+      x: 640 + sign * 448,
+      y: 196,
+      scale: 0.58,
+      alpha: 0.52,
+      visible: true,
+      depth: 10
+    };
+  }
+  const sign = offset > 0 ? 1 : -1;
+  return {
+    offset,
+    x: 640 + sign * 535,
+    y: 200,
+    scale: 0.44,
+    alpha: 0,
+    visible: false,
+    depth: 0
+  };
+}
+
 export class TitleScreen {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
@@ -20,14 +83,61 @@ export class TitleScreen {
   public selectedHeroId: HeroId = 'alchemist';
   public selectedSkillVariant: SkillVariant = 1;
   public selectedDifficultyMode: DifficultyMode = 'normal';
+  private keyListener: ((event: { key?: string; code?: string; preventDefault?: () => void }) => void) | null = null;
+  private rotateHeroHandler: ((delta: number) => void) | null = null;
+  private selectSkillHandler: ((variant: SkillVariant) => void) | null = null;
+  private confirmStartHandler: (() => void) | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(300).setScrollFactor(0);
   }
 
+  private detachKeyListener(): void {
+    if (this.keyListener && this.scene.input?.keyboard?.off) {
+      this.scene.input.keyboard.off('keydown', this.keyListener);
+    }
+    this.keyListener = null;
+  }
+
+  public rotateHero(delta: number): void {
+    this.rotateHeroHandler?.(delta);
+  }
+
+  public handleKeyDown(event: { key?: string; code?: string; preventDefault?: () => void }): boolean {
+    if (!this.isOpen) return false;
+    const code = event.code ?? '';
+    const key = event.key ?? '';
+
+    if (code === 'ArrowRight' || key === 'ArrowRight' || code === 'KeyD' || key === 'd' || key === 'D') {
+      event.preventDefault?.();
+      this.rotateHeroHandler?.(1);
+      return true;
+    }
+    if (code === 'ArrowLeft' || key === 'ArrowLeft' || code === 'KeyA' || key === 'a' || key === 'A') {
+      event.preventDefault?.();
+      this.rotateHeroHandler?.(-1);
+      return true;
+    }
+    if (code === 'Digit1' || key === '1') {
+      this.selectSkillHandler?.(1);
+      return true;
+    }
+    if (code === 'Digit2' || key === '2') {
+      this.selectSkillHandler?.(2);
+      return true;
+    }
+    if (code === 'Enter' || code === 'NumpadEnter' || key === 'Enter') {
+      event.preventDefault?.();
+      this.confirmStartHandler?.();
+      return true;
+    }
+    return false;
+  }
+
   public show(onStart: (heroId: HeroId, skillVariant: SkillVariant, difficultyMode: DifficultyMode) => void): void {
     this.isOpen = true;
+    this.detachKeyListener();
     this.container.removeAll(true);
     this.container.setVisible(true);
 
@@ -76,9 +186,9 @@ export class TitleScreen {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const subtitle = this.scene.add.text(640, 62, 'CHỌN 1 TRONG 8 ANH HÙNG, TUYỆT KỸ [F] & NÂNG CẤP VĨNH VIỄN', {
+    const subtitle = this.scene.add.text(640, 62, '◀ / ▶ HOẶC A / D: XOAY TƯỚNG  •  1 / 2: ĐỔI SKILL  •  ENTER: VÀO TRẬN', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
-      fontSize: '12.5px',
+      fontSize: '12px',
       color: '#38bdf8',
       stroke: '#000000',
       strokeThickness: 4
@@ -108,31 +218,29 @@ export class TitleScreen {
     }).setOrigin(1, 0.5);
     this.container.add(recordStatusText);
 
-    // 8 Hero Class Selection Cards in crisp 4 x 2 Grid (X: 39..1241, Y: 79..315)
-    const cardW = 290;
-    const cardH = 114;
-    const gapX = 14;
-    const gapY = 8;
-    const cols = 4;
-    const gridStartX = 640 - (cardW * cols + gapX * (cols - 1)) / 2 + cardW / 2;
-    const gridStartY = 136;
+    // Horizontal Rotating Hero Carousel (X: 47..1233, Y: 79..315)
+    const carouselLayer = this.scene.add.container(0, 0);
+    this.container.add(carouselLayer);
 
-    const getCardPos = (idx: number) => {
-      const col = idx % cols;
-      const row = Math.floor(idx / cols);
-      return {
-        cx: gridStartX + col * (cardW + gapX),
-        cy: gridStartY + row * (cardH + gapY)
-      };
-    };
+    const cardW = 340;
+    const cardH = 196;
 
     interface HeroCardRefs {
+      id: HeroId;
+      card: Phaser.GameObjects.Container;
       bg: Phaser.GameObjects.Graphics;
+      pedestal: Phaser.GameObjects.Graphics;
       badgeBg: Phaser.GameObjects.Graphics;
       badgeText: Phaser.GameObjects.Text;
+      lastOffset: number;
     }
 
-    const cardRefs: Map<HeroId, HeroCardRefs> = new Map();
+    const cardRefs: HeroCardRefs[] = [];
+    let selectedIndex = Math.max(
+      0,
+      HERO_LIST.findIndex(h => h.id === this.selectedHeroId)
+    );
+    this.selectedHeroId = HERO_LIST[selectedIndex].id;
 
     // Skill 1 / Skill 2 Selector Bar (Y: 324..372, X: 47..1233)
     const skillBarBg = this.scene.add.graphics();
@@ -221,128 +329,278 @@ export class TitleScreen {
     this.container.add(s1Zone);
     this.container.add(s2Zone);
 
-    const redrawCards = () => {
-      HERO_LIST.forEach((h, idx) => {
-        const ref = cardRefs.get(h.id);
-        if (!ref) return;
-        const { cx, cy } = getCardPos(idx);
-        const isSel = this.selectedHeroId === h.id;
+    // Carousel Pagination Dots (Y = 301)
+    const dotsGfx = this.scene.add.graphics();
+    this.container.add(dotsGfx);
+    const dotSpacing = 22;
+    const dotStartX = 640 - ((HERO_LIST.length - 1) * dotSpacing) / 2;
+    const dotY = 301;
 
-        ref.bg.clear();
-        ref.bg.fillStyle(isSel ? 0x1e293b : 0x111827, 0.94);
-        ref.bg.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
-        ref.bg.lineStyle(isSel ? 3 : 1.5, isSel ? h.accentColor : 0x374151, isSel ? 1 : 0.8);
-        ref.bg.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
-
-        const variant: SkillVariant = isSel ? this.selectedSkillVariant : 1;
-        const meta = getHeroSkillMeta(h.id, variant);
-        const badgeX = cx - 133;
-        const badgeY = cy + 20;
-        const badgeW = 144;
-        const badgeH = 24;
-
-        ref.badgeBg.clear();
-        ref.badgeBg.fillStyle(isSel ? 0x0f172a : 0x0b1120, 0.95);
-        ref.badgeBg.fillRoundedRect(badgeX, badgeY, badgeW, badgeH, 6);
-        ref.badgeBg.lineStyle(1, isSel ? h.accentColor : 0x475569, isSel ? 0.95 : 0.7);
-        ref.badgeBg.strokeRoundedRect(badgeX, badgeY, badgeW, badgeH, 6);
-
-        ref.badgeText.setText(`[S${variant}] ${meta.shortLabelVi} · ${meta.cooldown}s`);
-        ref.badgeText.setColor(isSel ? h.accentHex : '#fbbf24');
+    const redrawDots = () => {
+      const hero = HEROES[this.selectedHeroId];
+      dotsGfx.clear();
+      HERO_LIST.forEach((h, i) => {
+        const dx = dotStartX + i * dotSpacing;
+        const isCurrent = i === selectedIndex;
+        if (isCurrent) {
+          dotsGfx.fillStyle(hero.accentColor, 1);
+          dotsGfx.fillRoundedRect(dx - 8, dotY - 4, 16, 8, 4);
+        } else {
+          dotsGfx.fillStyle(0x475569, 0.85);
+          dotsGfx.fillCircle(dx, dotY, 3.5);
+        }
       });
     };
 
-    s1Zone.on('pointerdown', () => {
-      audio.init();
-      audio.resume();
-      audio.playPickup();
-      this.selectedSkillVariant = 1;
-      redrawCards();
-      refreshSkillBar();
-    });
+    const redrawCards = (animate: boolean) => {
+      const total = HERO_LIST.length;
 
-    s2Zone.on('pointerdown', () => {
+      cardRefs.forEach((ref, idx) => {
+        const hero = HERO_LIST[idx];
+        const offset = getCarouselOffset(idx, selectedIndex, total);
+        const layout = computeCarouselSlotLayout(offset);
+        const isSel = offset === 0;
+
+        ref.bg.clear();
+        ref.bg.fillStyle(isSel ? 0x172033 : 0x0f172a, isSel ? 0.98 : 0.9);
+        ref.bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
+        ref.bg.lineStyle(isSel ? 3 : 1.5, isSel ? hero.accentColor : 0x334155, isSel ? 1 : 0.75);
+        ref.bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
+
+        ref.pedestal.clear();
+        ref.pedestal.fillStyle(hero.accentColor, isSel ? 0.16 : 0.08);
+        ref.pedestal.fillCircle(-100, -18, isSel ? 46 : 38);
+        ref.pedestal.lineStyle(1.5, hero.accentColor, isSel ? 0.65 : 0.25);
+        ref.pedestal.strokeCircle(-100, -18, isSel ? 46 : 38);
+
+        const variant: SkillVariant = isSel ? this.selectedSkillVariant : 1;
+        const meta = getHeroSkillMeta(hero.id, variant);
+        const badgeW = 308;
+        const badgeH = 28;
+        const badgeY = 66;
+
+        ref.badgeBg.clear();
+        ref.badgeBg.fillStyle(isSel ? 0x0b1120 : 0x090d16, 0.96);
+        ref.badgeBg.fillRoundedRect(-badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 7);
+        ref.badgeBg.lineStyle(1, isSel ? hero.accentColor : 0x475569, isSel ? 0.95 : 0.6);
+        ref.badgeBg.strokeRoundedRect(-badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 7);
+
+        ref.badgeText.setText(`[S${variant}] ${meta.shortLabelVi} · ${meta.cooldown}s`);
+        ref.badgeText.setColor(isSel ? hero.accentHex : '#fbbf24');
+
+        ref.card.setDepth(layout.depth);
+
+        if (!animate || !this.scene.tweens?.add) {
+          ref.card.setPosition(layout.x, layout.y);
+          ref.card.setScale(layout.scale);
+          ref.card.setAlpha(layout.alpha);
+          ref.card.setVisible(layout.visible);
+        } else {
+          this.scene.tweens.killTweensOf?.(ref.card);
+          const wasHidden = Math.abs(ref.lastOffset) >= 3;
+          if (wasHidden && layout.visible) {
+            const enterX = offset > 0 ? 640 + 535 : 640 - 535;
+            ref.card.setPosition(enterX, 200);
+            ref.card.setScale(0.44);
+            ref.card.setAlpha(0);
+            ref.card.setVisible(true);
+          } else if (layout.visible) {
+            ref.card.setVisible(true);
+          }
+
+          // Prevent cards wrapping from -2 to +3 from crossing over center
+          if (!wasHidden && Math.abs(offset - ref.lastOffset) > total / 2) {
+            const jumpEdgeX = offset > 0 ? 640 + 535 : 640 - 535;
+            ref.card.setPosition(jumpEdgeX, layout.y);
+          }
+
+          this.scene.tweens.add({
+            targets: ref.card,
+            x: layout.x,
+            y: layout.y,
+            scaleX: layout.scale,
+            scaleY: layout.scale,
+            alpha: layout.alpha,
+            duration: 185,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+              ref.card.setVisible(layout.visible);
+            }
+          });
+        }
+
+        ref.lastOffset = offset;
+      });
+
+      // Keep Phaser container draw order aligned with depth (back -> front)
+      const ordered = [...cardRefs].sort((a, b) => a.card.depth - b.card.depth);
+      ordered.forEach(item => carouselLayer.bringToTop?.(item.card));
+      redrawDots();
+    };
+
+    const setSelectedIndex = (nextIdx: number, animate: boolean = true) => {
+      selectedIndex = wrapHeroIndex(nextIdx, 0, HERO_LIST.length);
+      this.selectedHeroId = HERO_LIST[selectedIndex].id;
+      redrawCards(animate);
+      refreshSkillBar();
+    };
+
+    const selectSkill = (variant: SkillVariant) => {
       audio.init();
       audio.resume();
       audio.playPickup();
-      this.selectedSkillVariant = 2;
-      redrawCards();
+      this.selectedSkillVariant = variant;
+      redrawCards(false);
       refreshSkillBar();
-    });
+    };
+
+    s1Zone.on('pointerdown', () => selectSkill(1));
+    s2Zone.on('pointerdown', () => selectSkill(2));
 
     HERO_LIST.forEach((hero, idx) => {
-      const { cx, cy } = getCardPos(idx);
-      const bg = this.scene.add.graphics();
-      this.container.add(bg);
+      const card = this.scene.add.container(640, 184);
+      carouselLayer.add(card);
 
-      const heroSprite = this.scene.add.sprite(cx - 108, cy - 16, `${hero.texturePrefix}_idle`).setScale(1.85);
-      this.container.add(heroSprite);
+      const bg = this.scene.add.graphics();
+      card.add(bg);
+
+      const pedestal = this.scene.add.graphics();
+      card.add(pedestal);
+
+      const heroSprite = this.scene.add.sprite(-100, -20, `${hero.texturePrefix}_idle`).setScale(2.75);
+      card.add(heroSprite);
 
       const weaponData = WEAPONS[hero.startWeapon];
-      const weaponIcon = this.scene.add.sprite(cx + 120, cy - 30, weaponData.iconTexture).setScale(0.95);
-      this.container.add(weaponIcon);
-
-      const nameText = this.scene.add.text(cx - 72, cy - 39, hero.nameVi, {
+      const nameText = this.scene.add.text(-36, -68, hero.nameVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '13.5px',
+        fontSize: '17px',
         color: hero.accentHex,
         fontStyle: 'bold'
       }).setOrigin(0, 0.5);
-      this.container.add(nameText);
+      card.add(nameText);
 
-      const roleText = this.scene.add.text(cx - 72, cy - 21, hero.roleVi, {
+      const roleText = this.scene.add.text(-36, -45, hero.roleVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '10.5px',
+        fontSize: '11.5px',
         color: '#94a3b8'
       }).setOrigin(0, 0.5);
-      this.container.add(roleText);
+      card.add(roleText);
 
       const statsText = this.scene.add.text(
-        cx - 72,
-        cy - 2,
-        `HP: ${hero.hp} | Giáp: ${hero.armor} | NL: ${hero.maxEnergy}`,
+        -36,
+        -19,
+        `HP: ${hero.hp}  |  Giáp: ${hero.armor}  |  NL: ${hero.maxEnergy}`,
         {
           fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '10.5px',
+          fontSize: '11.5px',
           color: '#e2e8f0',
           fontStyle: 'bold'
         }
       ).setOrigin(0, 0.5);
-      this.container.add(statsText);
+      card.add(statsText);
+
+      const weaponIcon = this.scene.add.sprite(-24, 16, weaponData.iconTexture).setScale(1.0);
+      card.add(weaponIcon);
+
+      const weaponLabel = this.scene.add.text(-4, 16, `Khởi đầu: ${weaponData.nameVi}`, {
+        fontFamily: "'Segoe UI', Roboto, sans-serif",
+        fontSize: '11.5px',
+        color: '#cbd5e1'
+      }).setOrigin(0, 0.5);
+      card.add(weaponLabel);
 
       const badgeBg = this.scene.add.graphics();
-      this.container.add(badgeBg);
+      card.add(badgeBg);
 
-      const badgeText = this.scene.add.text(cx - 61, cy + 32, '', {
+      const badgeText = this.scene.add.text(0, 66, '', {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '10.5px',
+        fontSize: '12px',
         color: '#fbbf24',
         fontStyle: 'bold'
       }).setOrigin(0.5);
-      this.container.add(badgeText);
+      card.add(badgeText);
 
-      const weaponLabel = this.scene.add.text(cx + 133, cy + 32, weaponData.nameVi, {
-        fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '10.5px',
-        color: '#cbd5e1'
-      }).setOrigin(1, 0.5);
-      this.container.add(weaponLabel);
+      const ref: HeroCardRefs = {
+        id: hero.id,
+        card,
+        bg,
+        pedestal,
+        badgeBg,
+        badgeText,
+        lastOffset: getCarouselOffset(idx, selectedIndex, HERO_LIST.length)
+      };
+      cardRefs.push(ref);
 
-      cardRefs.set(hero.id, { bg, badgeBg, badgeText });
-
-      const cardZone = this.scene.add.zone(cx, cy, cardW, cardH).setInteractive({ useHandCursor: true });
-      this.container.add(cardZone);
+      const cardZone = this.scene.add.zone(0, 0, cardW, cardH).setInteractive({ useHandCursor: true });
+      card.add(cardZone);
       cardZone.on('pointerdown', () => {
         audio.init();
         audio.resume();
         audio.playPickup();
-        this.selectedHeroId = hero.id;
-        redrawCards();
-        refreshSkillBar();
+        setSelectedIndex(idx, true);
       });
     });
 
-    redrawCards();
+    // Left / Right Carousel Arrow Buttons
+    const createArrowBtn = (bx: number, label: string, delta: number) => {
+      const bw = 44;
+      const bh = 74;
+      const by = 186;
+      const arrowBg = this.scene.add.graphics();
+      const drawArrow = (hover: boolean) => {
+        arrowBg.clear();
+        arrowBg.fillStyle(hover ? 0x1e293b : 0x0f172a, 0.94);
+        arrowBg.fillRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, 10);
+        arrowBg.lineStyle(2, hover ? 0x38bdf8 : 0x475569, hover ? 1 : 0.85);
+        arrowBg.strokeRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, 10);
+      };
+      drawArrow(false);
+      this.container.add(arrowBg);
+
+      const arrowTxt = this.scene.add.text(bx, by, label, {
+        fontFamily: "'Segoe UI', Roboto, sans-serif",
+        fontSize: '22px',
+        color: '#e2e8f0',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.container.add(arrowTxt);
+
+      const arrowZone = this.scene.add.zone(bx, by, bw, bh).setInteractive({ useHandCursor: true });
+      this.container.add(arrowZone);
+
+      arrowZone.on('pointerover', () => {
+        drawArrow(true);
+        arrowTxt.setColor('#38bdf8');
+      });
+      arrowZone.on('pointerout', () => {
+        drawArrow(false);
+        arrowTxt.setColor('#e2e8f0');
+      });
+      arrowZone.on('pointerdown', () => {
+        audio.init();
+        audio.resume();
+        audio.playPickup();
+        setSelectedIndex(wrapHeroIndex(selectedIndex, delta, HERO_LIST.length), true);
+      });
+    };
+
+    createArrowBtn(46, '◀', -1);
+    createArrowBtn(1234, '▶', 1);
+
+    // Clickable dot hit zones
+    HERO_LIST.forEach((_h, i) => {
+      const dx = dotStartX + i * dotSpacing;
+      const dotZone = this.scene.add.zone(dx, dotY, 18, 18).setInteractive({ useHandCursor: true });
+      this.container.add(dotZone);
+      dotZone.on('pointerdown', () => {
+        audio.init();
+        audio.resume();
+        audio.playPickup();
+        setSelectedIndex(i, true);
+      });
+    });
+
+    redrawCards(false);
     refreshSkillBar();
 
     // Sảnh Nâng Cấp Vĩnh Viễn (Y: 382..540, 5 compact upgrade cards)
@@ -655,13 +913,32 @@ export class TitleScreen {
       btnBg.strokeRoundedRect(640 - btnW / 2, btnY - btnH / 2, btnW, btnH, 10);
     });
 
-    hitZone.on('pointerdown', () => {
+    const triggerStart = () => {
+      if (!this.isOpen) return;
       audio.init();
       audio.resume();
       audio.playPickup();
       this.hide();
       onStart(this.selectedHeroId, this.selectedSkillVariant, this.selectedDifficultyMode);
-    });
+    };
+
+    hitZone.on('pointerdown', triggerStart);
+
+    this.rotateHeroHandler = (delta: number) => {
+      audio.init();
+      audio.resume();
+      audio.playPickup();
+      setSelectedIndex(wrapHeroIndex(selectedIndex, delta, HERO_LIST.length), true);
+    };
+    this.selectSkillHandler = selectSkill;
+    this.confirmStartHandler = triggerStart;
+
+    if (this.scene.input?.keyboard?.on) {
+      this.keyListener = (event: { key?: string; code?: string; preventDefault?: () => void }) => {
+        this.handleKeyDown(event);
+      };
+      this.scene.input.keyboard.on('keydown', this.keyListener);
+    }
 
     // Bottom concise Merge Hints & Companion tip bar (Y: 616..698)
     const footerBg = this.scene.add.graphics();
@@ -708,10 +985,12 @@ export class TitleScreen {
 
   public hide(): void {
     this.isOpen = false;
+    this.detachKeyListener();
     this.container.setVisible(false);
   }
 
   public destroy(): void {
+    this.detachKeyListener();
     this.container.destroy();
   }
 }
