@@ -123,7 +123,7 @@ export class InteractiveProps {
     prop.shadow.destroy();
   }
 
-  public detonateProp(prop: PropData, pool: ProjectilePool, enemies: EnemyBase[]): void {
+  public detonateProp(prop: PropData, pool: ProjectilePool, _enemies: EnemyBase[]): void {
     if (prop.isDestroyed) return;
     prop.isDestroyed = true;
 
@@ -132,36 +132,9 @@ export class InteractiveProps {
 
     const explosionRadius = prop.type === 'explosive' ? 85 : 70;
     const damage = prop.type === 'explosive' ? 24 : 14;
+    const element: 'fire' | 'frost' = prop.type === 'explosive' ? 'fire' : 'frost';
 
     pool.destroyEnemyBulletsInRadius(prop.x, prop.y, explosionRadius);
-
-    for (const enemy of enemies) {
-      if (enemy.isDead) continue;
-      const dist = Math.hypot(enemy.sprite.x - prop.x, enemy.sprite.y - prop.y);
-      if (dist <= explosionRadius) {
-        const dx = enemy.sprite.x - prop.x;
-        const dy = enemy.sprite.y - prop.y;
-        const len = Math.hypot(dx, dy) || 1;
-
-        enemy.takeDamage({
-          amount: damage,
-          isCrit: true,
-          element: prop.type === 'explosive' ? 'fire' : 'frost',
-          knockback: {
-            x: dx / len,
-            y: dy / len,
-            force: 280
-          },
-          isPlayerAttack: true
-        });
-
-        if (prop.type === 'explosive') {
-          StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
-        } else {
-          StatusManager.applyStatus(enemy as any, 'freeze', 3.0, 1, 0.5, 0.6);
-        }
-      }
-    }
 
     const fx = this.scene.add.graphics().setDepth(20);
     const fxColor = prop.type === 'explosive' ? 0xf59e0b : 0x22c55e;
@@ -180,7 +153,8 @@ export class InteractiveProps {
       onComplete: () => fx.destroy()
     });
 
-    events.emit('combat:explosion', { x: prop.x, y: prop.y, radius: explosionRadius, damage });
+    // Single explosion authority: MainScene's 'combat:explosion' listener resolves enemy damage, status, and barrel chains
+    events.emit('combat:explosion', { x: prop.x, y: prop.y, radius: explosionRadius, damage, element });
 
     prop.sprite.destroy();
     prop.shadow.destroy();
@@ -192,5 +166,64 @@ export class InteractiveProps {
       p.shadow.destroy();
     }
     this.props = [];
+  }
+}
+
+export interface CombatExplosionPayload {
+  x: number;
+  y: number;
+  radius: number;
+  damage: number;
+  element?: 'fire' | 'frost' | 'physical' | 'poison';
+}
+
+export function resolveCombatExplosion(
+  data: CombatExplosionPayload,
+  activeEnemies: EnemyBase[],
+  interactiveProps: InteractiveProps | null | undefined,
+  projectilePool: ProjectilePool,
+  onCrateBreak?: (x: number, y: number) => void
+): void {
+  const element = data.element ?? 'fire';
+
+  for (const enemy of activeEnemies) {
+    if (enemy.isDead) continue;
+    const dist = Math.hypot(enemy.sprite.x - data.x, enemy.sprite.y - data.y);
+    if (dist <= data.radius) {
+      const dx = enemy.sprite.x - data.x;
+      const dy = enemy.sprite.y - data.y;
+      const len = Math.hypot(dx, dy) || 1;
+
+      enemy.takeDamage({
+        amount: data.damage,
+        isCrit: true,
+        element,
+        knockback: { x: dx / len, y: dy / len, force: element === 'frost' ? 240 : 280 },
+        isPlayerAttack: true
+      });
+      if (element === 'fire') {
+        StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
+      } else if (element === 'frost') {
+        StatusManager.applyStatus(enemy as any, 'freeze', 3.0, 0, 1.0, 0.45);
+      } else if (element === 'poison') {
+        StatusManager.applyStatus(enemy as any, 'poison', 3.0, 2, 0.5);
+      }
+    }
+  }
+
+  if (interactiveProps) {
+    for (const prop of interactiveProps.props) {
+      if (prop.isDestroyed) continue;
+      const dist = Math.hypot(prop.x - data.x, prop.y - data.y);
+      if (dist <= data.radius && dist > 8) {
+        interactiveProps.damageProp(
+          prop,
+          { amount: data.damage, isCrit: true, isPlayerAttack: true },
+          projectilePool,
+          activeEnemies,
+          onCrateBreak
+        );
+      }
+    }
   }
 }

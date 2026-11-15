@@ -3,6 +3,7 @@ import { TextureGenerator } from '../presentation/TextureGenerator';
 import { EffectsManager, STATUS_ELEMENT_COLORS, StatusElement } from '../presentation/EffectsManager';
 import { DungeonGenerator } from '../world/DungeonGenerator';
 import { RoomManager, PickupItem } from '../world/RoomManager';
+import { resolveCombatExplosion } from '../world/InteractiveProps';
 import { PlayerController } from '../player/PlayerController';
 import { PetController } from '../player/PetController';
 import { TurretEntity } from '../player/TurretEntity';
@@ -223,51 +224,15 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
-    events.on('combat:explosion', (data: { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' }) => {
+    events.on('combat:explosion', (data: { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' | 'poison' }) => {
       if (!this.roomManager) return;
-
-      const element = data.element ?? 'fire';
-
-      // 1. Damage all active enemies in blast radius
-      for (const enemy of this.roomManager.activeEnemies) {
-        if (enemy.isDead) continue;
-        const dist = Math.hypot(enemy.sprite.x - data.x, enemy.sprite.y - data.y);
-        if (dist <= data.radius) {
-          const dx = enemy.sprite.x - data.x;
-          const dy = enemy.sprite.y - data.y;
-          const len = Math.hypot(dx, dy) || 1;
-
-          enemy.takeDamage({
-            amount: data.damage,
-            isCrit: true,
-            element,
-            knockback: { x: dx / len, y: dy / len, force: element === 'frost' ? 240 : 280 },
-            isPlayerAttack: true
-          });
-          if (element === 'fire') {
-            StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
-          } else if (element === 'frost') {
-            StatusManager.applyStatus(enemy as any, 'freeze', 3.0, 0, 1.0, 0.45);
-          }
-        }
-      }
-
-      // 2. Chain reaction: detonate other barrels within blast radius!
-      if (this.roomManager.interactiveProps) {
-        for (const prop of this.roomManager.interactiveProps.props) {
-          if (prop.isDestroyed) continue;
-          const dist = Math.hypot(prop.x - data.x, prop.y - data.y);
-          if (dist <= data.radius && dist > 8) {
-            this.roomManager.interactiveProps.damageProp(
-              prop,
-              { amount: data.damage, isCrit: true, isPlayerAttack: true },
-              this.projectilePool,
-              this.roomManager.activeEnemies,
-              (cx, cy) => this.spawnCrateLoot(cx, cy)
-            );
-          }
-        }
-      }
+      resolveCombatExplosion(
+        data,
+        this.roomManager.activeEnemies,
+        this.roomManager.interactiveProps,
+        this.projectilePool,
+        (cx, cy) => this.spawnCrateLoot(cx, cy)
+      );
     });
 
     events.on('player:laser-beam', (data: {
