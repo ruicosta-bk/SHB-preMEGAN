@@ -87,6 +87,15 @@ export class BossIgnis extends EnemyBase {
     this.sprite.setTint(0xffffff);
     audio.playHitEnemy();
 
+    events.emit('combat:enemy-hit', {
+      enemyId: this.id,
+      damage: amt,
+      isCrit: !!damage.isCrit,
+      x: this.sprite.x,
+      y: this.sprite.y,
+      element: damage.element
+    });
+
     // Check Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
