@@ -124,6 +124,7 @@ export class PauseModal {
     color: number = 0x334155
   ): void {
     const bg = this.scene.add.graphics();
+    bg.setPosition(x, y);
     bg.fillStyle(color, 1.0);
     bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
     parent.add(bg);
