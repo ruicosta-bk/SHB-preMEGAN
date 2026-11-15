@@ -24,6 +24,9 @@ export abstract class EnemyBase implements EntityWithStatus {
   protected eliteAura: Phaser.GameObjects.Graphics | null = null;
   protected bobTimer: number = Math.random() * Math.PI * 2;
   private hasElementalTint: boolean = false;
+  protected attackRateScale: number = 1;
+  protected bonusDamage: number = 0;
+  private difficultyApplied: boolean = false;
 
   get x(): number { return this.sprite.x; }
   get y(): number { return this.sprite.y; }
@@ -54,6 +57,26 @@ export abstract class EnemyBase implements EntityWithStatus {
     this.eliteAura.fillStyle(0xef4444, 0.22);
     this.eliteAura.fillCircle(0, 0, 17);
     this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
+  }
+
+  public applyDifficultyScaling(
+    hpMult: number,
+    speedMult: number,
+    attackRateScale: number,
+    bonusDamage: number
+  ): void {
+    if (this.difficultyApplied) return;
+    this.difficultyApplied = true;
+    this.maxHp = Math.max(1, Math.ceil(this.maxHp * hpMult));
+    this.hp = this.maxHp;
+    this.speed *= speedMult;
+    this.attackRateScale = Math.max(0.5, attackRateScale);
+    this.bonusDamage = Math.max(0, bonusDamage);
+    this.onDifficultyScaled();
+  }
+
+  protected onDifficultyScaled(): void {
+    // Subclasses can override to scale custom phases or timers
   }
 
   public takeDamage(damage: DamageInfo): DamageResult {

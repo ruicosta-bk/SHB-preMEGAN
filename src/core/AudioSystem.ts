@@ -667,6 +667,74 @@ export class AudioSystem {
     this.registerVoice(380);
   }
 
+  public playBomberFuse(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    // Rapid rising warning chirp pulses
+    for (let i = 0; i < 3; i++) {
+      const t = now + i * 0.085;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      const baseFreq = 520 + i * 240;
+      osc.frequency.setValueAtTime(baseFreq, t);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.65, t + 0.075);
+
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    }
+
+    // Sparking fuse sizzle
+    this.playNoise(0.28, 0.24, 3400, 'highpass');
+    this.registerVoice(300);
+  }
+
+  public playSummonChant(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(280, now);
+    filter.frequency.exponentialRampToValueAtTime(980, now + 0.18);
+    filter.frequency.exponentialRampToValueAtTime(340, now + 0.46);
+
+    const chantGain = ctx.createGain();
+    chantGain.gain.setValueAtTime(0.02, now);
+    chantGain.gain.linearRampToValueAtTime(0.42, now + 0.09);
+    chantGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+    filter.connect(chantGain);
+    chantGain.connect(this.masterGain!);
+
+    // Dual-oscillator deep resonant mystic minor-fifth chord
+    const rootOsc = ctx.createOscillator();
+    rootOsc.type = 'sawtooth';
+    rootOsc.frequency.setValueAtTime(110, now);
+    rootOsc.frequency.linearRampToValueAtTime(103.83, now + 0.46);
+    rootOsc.connect(filter);
+    rootOsc.start(now);
+    rootOsc.stop(now + 0.47);
+
+    const fifthOsc = ctx.createOscillator();
+    fifthOsc.type = 'triangle';
+    fifthOsc.frequency.setValueAtTime(164.81, now);
+    fifthOsc.frequency.linearRampToValueAtTime(155.56, now + 0.46);
+    fifthOsc.connect(filter);
+    fifthOsc.start(now);
+    fifthOsc.stop(now + 0.47);
+
+    this.registerVoice(480);
+  }
+
   private playNoise(duration: number, volume: number, filterFreq: number, filterType: BiquadFilterType): void {
     if (!this.ctx || !this.masterGain) return;
     const ctx = this.ctx;

@@ -1,5 +1,6 @@
 import { RoomState, RoomType, Direction, DoorData, RoomLayout, CorridorData, EnemySpawnDef } from '../types/room';
 import { BiomeId, getFloorMeta } from '../data/biomes';
+import { DifficultyMode } from '../data/difficulty';
 
 // Deterministic Mulberry32 PRNG
 export class SeededRandom {
@@ -38,7 +39,11 @@ export class DungeonGenerator {
    * Generates 8 connected rooms deterministically from a numeric seed & floor index (1..6)
    * with random branching topology, varied room dimensions, biome hazards, combat waves, and guaranteed path to exit/boss.
    */
-  public static generateFloor(seed: number = 1337, floorNumber: number = 1): RoomState[] {
+  public static generateFloor(
+    seed: number = 1337,
+    floorNumber: number = 1,
+    difficultyMode: DifficultyMode = 'normal'
+  ): RoomState[] {
     const floorMeta = getFloorMeta(floorNumber);
     const rng = new SeededRandom(seed + floorNumber * 7919);
 
@@ -139,7 +144,16 @@ export class DungeonGenerator {
       const worldX = cellCenterX - width / 2;
       const worldY = cellCenterY - height / 2;
 
-      const { wave1, waves } = this.generateEnemyWaves(type, i, floorMeta.stage, floorMeta.isBossFloor, floorMeta.biomeId, layout, rng);
+      const { wave1, waves } = this.generateEnemyWaves(
+        type,
+        i,
+        floorMeta.stage,
+        floorMeta.isBossFloor,
+        floorMeta.biomeId,
+        layout,
+        rng,
+        difficultyMode
+      );
 
       rooms.push({
         index: i,
@@ -474,7 +488,8 @@ export class DungeonGenerator {
     isBossFloor: boolean,
     biomeId: BiomeId,
     layout: RoomLayout,
-    rng: SeededRandom
+    rng: SeededRandom,
+    difficultyMode: DifficultyMode = 'normal'
   ): { wave1: EnemySpawnDef[]; waves: EnemySpawnDef[][] } {
     if (type === 'start' || type === 'treasure' || type === 'rest') {
       return { wave1: [], waves: [] };
@@ -502,19 +517,27 @@ export class DungeonGenerator {
       }
       // Sub-floor 1 Exit Guardian Chamber: Elite Captain + escorts at verified clear tiles
       const guardian = biomeId === 'frost_cavern' ? 'frost_knight' : biomeId === 'molten_core' ? 'charger' : 'fan_caster';
+      const wave2Support = biomeId === 'molten_core' ? 'summoner' : 'turret_mage';
+      const wave2: EnemySpawnDef[] = [
+        { type: guardian, x: 0.5, y: 0.5, isElite: true },
+        { type: 'frost_mage', x: 0.32, y: 0.34 },
+        { type: 'charger', x: 0.72, y: 0.66 },
+        { type: wave2Support, x: 0.28, y: 0.66 }
+      ];
+      if (difficultyMode === 'badass') {
+        wave2.push({
+          type: wave2Support === 'summoner' ? 'turret_mage' : 'summoner',
+          x: 0.72,
+          y: 0.34
+        });
+      }
       return {
         wave1: [
           { type: guardian, x: 0.62, y: 0.36, isElite: true },
           { type: 'shooter', x: 0.68, y: 0.65 },
           { type: 'grunt', x: 0.48, y: 0.5 }
         ],
-        waves: [
-          [
-            { type: guardian, x: 0.5, y: 0.5, isElite: true },
-            { type: 'frost_mage', x: 0.32, y: 0.34 },
-            { type: 'charger', x: 0.72, y: 0.66 }
-          ]
-        ]
+        waves: [wave2]
       };
     }
 
@@ -535,15 +558,16 @@ export class DungeonGenerator {
       }
     }
 
-    const pool: string[] = ['grunt', 'shooter'];
+    let pool: string[];
     if (biomeId === 'stone_crypt') {
-      if (roomIndex >= 2) pool.push('fan_caster', 'frost_mage');
-      if (roomIndex >= 4) pool.push('charger');
+      pool = ['grunt', 'shooter', 'bomber'];
+      if (roomIndex >= 2) pool.push('fan_caster', 'frost_mage', 'turret_mage');
+      if (roomIndex >= 4) pool.push('charger', 'summoner');
     } else if (biomeId === 'frost_cavern') {
-      pool.push('frost_mage', 'frost_knight');
-      if (roomIndex >= 4) pool.push('charger');
+      pool = ['grunt', 'frost_mage', 'frost_knight', 'bomber', 'turret_mage'];
+      if (roomIndex >= 4) pool.push('charger', 'summoner');
     } else {
-      pool.push('fan_caster', 'charger', 'frost_knight');
+      pool = ['fan_caster', 'charger', 'bomber', 'summoner', 'turret_mage', 'frost_knight'];
     }
 
     const pickWave = (count: number, eliteChance: number): EnemySpawnDef[] => {
@@ -554,16 +578,24 @@ export class DungeonGenerator {
       }
       const res: EnemySpawnDef[] = [];
       for (let i = 0; i < count; i++) {
-        const spot = shuffled[i];
+        const spot = shuffled[i % shuffled.length];
         const eType = rng.pick(pool);
-        const isElite = i === 0 && rng.next() < eliteChance;
+        const isElite =
+          (i === 0 && rng.next() < eliteChance) ||
+          (difficultyMode === 'badass' && i === 1 && rng.next() < eliteChance * 0.6);
         res.push({ type: eType, x: spot.x, y: spot.y, isElite });
       }
       return res;
     };
 
-    const baseCount = Math.min(5, 3 + Math.floor((stage + (roomIndex >= 4 ? 1 : 0)) / 2));
-    const eliteChance = Math.min(0.85, (roomIndex >= 2 ? 0.35 : 0.1) + (stage - 1) * 0.2);
+    const baseCount = Math.min(
+      6,
+      3 + Math.floor((stage + (roomIndex >= 3 ? 1 : 0)) / 2) + (difficultyMode === 'badass' ? 1 : 0)
+    );
+    const eliteChance = Math.min(
+      0.9,
+      (roomIndex >= 2 ? 0.35 : 0.15) + (stage - 1) * 0.2 + (difficultyMode === 'badass' ? 0.25 : 0)
+    );
 
     const wave1 = pickWave(baseCount, eliteChance * 0.7);
     const wave2 = pickWave(Math.max(3, baseCount - 1), eliteChance);

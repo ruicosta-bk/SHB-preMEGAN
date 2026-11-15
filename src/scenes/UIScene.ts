@@ -6,6 +6,7 @@ import { UpgradeSelectModal } from '../ui/UpgradeSelectModal';
 import { GameOverModal, RunStats } from '../ui/GameOverModal';
 import { events } from '../core/EventBus';
 import { HeroId, SkillVariant } from '../data/heroes';
+import { DifficultyMode } from '../data/difficulty';
 
 export class UIScene extends Phaser.Scene {
   public hud!: HUD;
@@ -15,6 +16,7 @@ export class UIScene extends Phaser.Scene {
   public gameOverModal!: GameOverModal;
   private selectedHeroId: HeroId = 'alchemist';
   private selectedSkillVariant: SkillVariant = 1;
+  private selectedDifficultyMode: DifficultyMode = 'normal';
 
   constructor() {
     super({ key: 'UIScene' });
@@ -57,7 +59,11 @@ export class UIScene extends Phaser.Scene {
       this.gameOverModal.show(
         stats,
         () => {
-          events.emit('game:restart', { heroId: this.selectedHeroId, skillVariant: this.selectedSkillVariant });
+          events.emit('game:restart', {
+            heroId: this.selectedHeroId,
+            skillVariant: this.selectedSkillVariant,
+            difficultyMode: this.selectedDifficultyMode
+          });
         },
         () => {
           events.emit('game:return-lobby');
@@ -88,10 +94,11 @@ export class UIScene extends Phaser.Scene {
   }
 
   private showTitleScreen(): void {
-    this.titleScreen.show((heroId: HeroId, skillVariant: SkillVariant) => {
+    this.titleScreen.show((heroId: HeroId, skillVariant: SkillVariant, difficultyMode: DifficultyMode) => {
       this.selectedHeroId = heroId;
       this.selectedSkillVariant = skillVariant;
-      events.emit('game:restart', { heroId, skillVariant });
+      this.selectedDifficultyMode = difficultyMode;
+      events.emit('game:restart', { heroId, skillVariant, difficultyMode });
     });
   }
 

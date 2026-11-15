@@ -2,10 +2,11 @@ import { WeaponData } from './weapon';
 import { UpgradeData } from './upgrade';
 import { RoomState } from './room';
 import { HeroId, SkillVariant } from '../data/heroes';
+import { DifficultyMode } from '../data/difficulty';
 
 export interface GameEvents {
   // Player state
-  'player:hero-selected': { skillShortLabelVi: string; accentHex: string; accentColor: number };
+  'player:hero-selected': { skillShortLabelVi: string; accentHex: string; accentColor: number; difficultyMode?: DifficultyMode };
   'player:stats-changed': { hp: number; maxHp: number; armor: number; maxArmor: number; energy: number; maxEnergy: number };
   'player:dash-cooldown': { progress: number; isReady: boolean };
   'player:skill-cooldown': { progress: number; isReady: boolean };
@@ -41,7 +42,7 @@ export interface GameEvents {
   'game:pause-toggled': { isPaused: boolean };
   'game:victory': RunResultEventPayload;
   'game:over': RunResultEventPayload;
-  'game:restart': { heroId?: HeroId; skillVariant?: SkillVariant } | void;
+  'game:restart': { heroId?: HeroId; skillVariant?: SkillVariant; difficultyMode?: DifficultyMode } | void;
   'game:return-lobby': void;
 }
 

@@ -6,8 +6,12 @@ import { EnemyGrunt } from '../enemies/EnemyGrunt';
 import { EnemyShooter } from '../enemies/EnemyShooter';
 import { EnemyFanCaster } from '../enemies/EnemyFanCaster';
 import { EnemyCharger } from '../enemies/EnemyCharger';
+import { EnemyBomber } from '../enemies/EnemyBomber';
+import { EnemySummoner } from '../enemies/EnemySummoner';
+import { EnemyTurret } from '../enemies/EnemyTurret';
 import { BossIgnis } from '../enemies/BossIgnis';
 import { BossFrost } from '../enemies/BossFrost';
+import { DifficultyMode, getFloorEnemyScale } from '../data/difficulty';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { InteractiveProps } from './InteractiveProps';
 import { WeaponData } from '../types/weapon';
@@ -77,6 +81,7 @@ export class RoomManager {
   private trapCycleTimer: number = 0;
   public areTrapsActive: boolean = false;
   public floorMeta: FloorMeta;
+  private difficultyMode: DifficultyMode;
 
   // Colliders
   public staticWallColliders: RectCollider[] = [];
@@ -95,11 +100,18 @@ export class RoomManager {
   public pickups: PickupItem[] = [];
   private merchantSprites: Phaser.GameObjects.Sprite[] = [];
 
-  constructor(scene: Phaser.Scene, rooms: RoomState[], corridors: CorridorData[] = [], floorNumber: number = 1) {
+  constructor(
+    scene: Phaser.Scene,
+    rooms: RoomState[],
+    corridors: CorridorData[] = [],
+    floorNumber: number = 1,
+    difficultyMode: DifficultyMode = 'normal'
+  ) {
     this.scene = scene;
     this.rooms = rooms;
     this.corridors = corridors;
     this.floorMeta = getFloorMeta(floorNumber);
+    this.difficultyMode = difficultyMode;
     this.interactiveProps = new InteractiveProps(scene);
   }
 
@@ -428,6 +440,8 @@ export class RoomManager {
   }
 
   private spawnEnemyList(room: RoomState, spawns: EnemySpawnDef[]): void {
+    const scale = getFloorEnemyScale(this.floorMeta.floorNumber, this.difficultyMode);
+
     for (const sp of spawns) {
       const rawX = room.worldX + sp.x * room.width;
       const rawY = room.worldY + sp.y * room.height;
@@ -442,6 +456,12 @@ export class RoomManager {
         enemy = new EnemyFanCaster(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'charger') {
         enemy = new EnemyCharger(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'bomber') {
+        enemy = new EnemyBomber(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'summoner') {
+        enemy = new EnemySummoner(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'turret_mage') {
+        enemy = new EnemyTurret(this.scene, worldPosX, worldPosY);
       } else if (
         sp.type === 'boss_frost' ||
         (sp.type === 'boss_ignis' && this.floorMeta.biomeId === 'frost_cavern' && this.floorMeta.isBossFloor)
@@ -452,7 +472,15 @@ export class RoomManager {
       }
 
       if (enemy) {
-        if (sp.isElite) {
+        enemy.applyDifficultyScaling(scale.hpMult, scale.speedMult, scale.attackRateScale, scale.bonusDamage);
+        const isBossEnemy = sp.type === 'boss_ignis' || sp.type === 'boss_frost';
+        const rollExtraElite =
+          !sp.isElite &&
+          !isBossEnemy &&
+          room.type === 'combat' &&
+          scale.extraEliteChance > 0 &&
+          Math.random() < scale.extraEliteChance;
+        if (sp.isElite || rollExtraElite) {
           enemy.promoteToElite();
         }
         this.activeEnemies.push(enemy);
@@ -559,7 +587,7 @@ export class RoomManager {
       }
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
 
-      if ((enemy instanceof BossIgnis || enemy instanceof BossFrost) && this.activeEnemies.length < 5) {
+      if ((enemy instanceof BossIgnis || enemy instanceof BossFrost || enemy instanceof EnemySummoner) && this.activeEnemies.length < 8) {
         const summons = enemy.consumeSummonRequest();
         if (summons && summons.length > 0) {
           const normSpawns = summons.map(s => ({

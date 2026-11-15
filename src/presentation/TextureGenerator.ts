@@ -1049,6 +1049,123 @@ export class TextureGenerator {
     px(ctx, '#94a3b8', 24, 9, 2, 13);
     px(ctx, '#67e8f9', 22, 4, 4, 6);
     this.refresh(tm, 'enemy_frost_knight');
+
+    // 7. Bomber (26x26): Fiery horned imp/bomb beetle with glowing crimson core, lit sparkling yellow fuse & bat fins
+    ctx = this.createCanvas(tm, 'enemy_bomber', 26, 26);
+    // Sparkling lit fuse on top
+    px(ctx, '#090b10', 11, 1, 4, 6);
+    px(ctx, '#78350f', 12, 3, 2, 4);
+    px(ctx, '#f97316', 11, 1, 4, 2);
+    px(ctx, '#fef08a', 12, 0, 2, 3);
+    px(ctx, '#ffffff', 12, 1, 1, 1);
+    px(ctx, '#fef08a', 10, 1, 1, 1);
+    px(ctx, '#fef08a', 15, 2, 1, 1);
+    // Fiery horns
+    px(ctx, '#090b10', 5, 3, 4, 5);
+    px(ctx, '#090b10', 17, 3, 4, 5);
+    px(ctx, '#f59e0b', 6, 4, 2, 3);
+    px(ctx, '#f59e0b', 18, 4, 2, 3);
+    px(ctx, '#fef08a', 6, 4, 1, 1);
+    px(ctx, '#fef08a', 19, 4, 1, 1);
+    // Bat-like side fins
+    px(ctx, '#090b10', 1, 10, 5, 8);
+    px(ctx, '#090b10', 20, 10, 5, 8);
+    px(ctx, '#7f1d1d', 2, 11, 3, 5);
+    px(ctx, '#7f1d1d', 21, 11, 3, 5);
+    px(ctx, '#ef4444', 2, 11, 2, 2);
+    px(ctx, '#ef4444', 22, 11, 2, 2);
+    // Bomb-beetle armored body
+    px(ctx, '#090b10', 6, 6, 14, 16);
+    px(ctx, '#090b10', 5, 8, 16, 12);
+    px(ctx, '#27272a', 7, 7, 12, 14);
+    px(ctx, '#3f3f46', 8, 7, 10, 4);
+    // Fierce eyes
+    px(ctx, '#090b10', 8, 9, 3, 2);
+    px(ctx, '#090b10', 15, 9, 3, 2);
+    px(ctx, '#facc15', 9, 9, 2, 2);
+    px(ctx, '#facc15', 15, 9, 2, 2);
+    px(ctx, '#ffffff', 9, 9, 1, 1);
+    px(ctx, '#ffffff', 16, 9, 1, 1);
+    // Glowing crimson bomb core
+    px(ctx, '#090b10', 9, 13, 8, 7);
+    px(ctx, '#dc2626', 10, 14, 6, 5);
+    px(ctx, '#f97316', 11, 15, 4, 3);
+    px(ctx, '#fef08a', 12, 16, 2, 1);
+    // Claws / feet
+    px(ctx, '#090b10', 7, 22, 4, 3);
+    px(ctx, '#090b10', 15, 22, 4, 3);
+    px(ctx, '#52525b', 8, 22, 2, 2);
+    px(ctx, '#52525b', 16, 22, 2, 2);
+    this.refresh(tm, 'enemy_bomber');
+
+    // 8. Summoner (26x28): Dark obsidian hooded Necromancer Priest with purple glowing eyes, horned skull mantle & amethyst staff
+    ctx = this.createCanvas(tm, 'enemy_summoner', 26, 28);
+    // Peaked obsidian hood + horns
+    px(ctx, '#090b10', 9, 1, 8, 4);
+    px(ctx, '#090b10', 4, 3, 4, 6);
+    px(ctx, '#090b10', 18, 3, 4, 6);
+    px(ctx, '#cbd5e1', 5, 4, 2, 4);
+    px(ctx, '#cbd5e1', 19, 4, 2, 4);
+    px(ctx, '#090b10', 6, 4, 14, 20);
+    px(ctx, '#090b10', 5, 12, 16, 11);
+    px(ctx, '#1e1b4b', 7, 5, 12, 9);
+    px(ctx, '#312e81', 10, 2, 6, 4);
+    // Shadowed hood opening & purple glowing eyes
+    px(ctx, '#090b10', 8, 8, 10, 5);
+    px(ctx, '#a855f7', 9, 9, 2, 2);
+    px(ctx, '#a855f7', 15, 9, 2, 2);
+    px(ctx, '#f3e8ff', 10, 9, 1, 1);
+    px(ctx, '#f3e8ff', 15, 9, 1, 1);
+    // Horned skull mantle collar
+    px(ctx, '#090b10', 4, 12, 5, 5);
+    px(ctx, '#090b10', 17, 12, 4, 5);
+    px(ctx, '#e2e8f0', 5, 13, 3, 3);
+    px(ctx, '#e2e8f0', 18, 13, 2, 3);
+    px(ctx, '#94a3b8', 11, 13, 4, 3);
+    // Dark obsidian robes + violet stole
+    px(ctx, '#18181b', 7, 15, 12, 8);
+    px(ctx, '#4c1d95', 11, 15, 4, 8);
+    px(ctx, '#9333ea', 12, 16, 2, 6);
+    // Amethyst summoning staff on right
+    px(ctx, '#090b10', 21, 5, 4, 21);
+    px(ctx, '#475569', 22, 11, 2, 14);
+    px(ctx, '#7c3aed', 21, 6, 4, 5);
+    px(ctx, '#c084fc', 22, 7, 2, 3);
+    px(ctx, '#f3e8ff', 22, 7, 1, 1);
+    // Feet
+    px(ctx, '#090b10', 7, 24, 4, 3);
+    px(ctx, '#090b10', 15, 24, 4, 3);
+    this.refresh(tm, 'enemy_summoner');
+
+    // 9. Turret (26x28): Armored floating ancient Runic Obelisk with glowing crimson-violet laser eye core & rune brackets
+    ctx = this.createCanvas(tm, 'enemy_turret', 26, 28);
+    // Floating rune brackets on sides
+    px(ctx, '#090b10', 1, 8, 5, 11);
+    px(ctx, '#090b10', 20, 8, 5, 11);
+    px(ctx, '#334155', 2, 9, 3, 9);
+    px(ctx, '#334155', 21, 9, 3, 9);
+    px(ctx, '#a855f7', 3, 11, 1, 5);
+    px(ctx, '#a855f7', 22, 11, 1, 5);
+    // Obelisk spire & armored chassis
+    px(ctx, '#090b10', 10, 0, 6, 4);
+    px(ctx, '#090b10', 8, 3, 10, 4);
+    px(ctx, '#090b10', 6, 6, 14, 17);
+    px(ctx, '#1e293b', 7, 7, 12, 15);
+    px(ctx, '#475569', 9, 4, 8, 3);
+    px(ctx, '#64748b', 11, 1, 4, 3);
+    px(ctx, '#334155', 8, 7, 10, 3);
+    // Glowing crimson-violet laser eye core
+    px(ctx, '#090b10', 9, 10, 8, 7);
+    px(ctx, '#9333ea', 10, 11, 6, 5);
+    px(ctx, '#e11d48', 11, 12, 4, 3);
+    px(ctx, '#fef08a', 12, 13, 2, 1);
+    // Rune base inlays & floating energy core underneath
+    px(ctx, '#c084fc', 9, 19, 2, 2);
+    px(ctx, '#c084fc', 15, 19, 2, 2);
+    px(ctx, '#090b10', 10, 23, 6, 4);
+    px(ctx, '#9333ea', 11, 24, 4, 2);
+    px(ctx, '#f43f5e', 12, 24, 2, 1);
+    this.refresh(tm, 'enemy_turret');
   }
 
   private static createBossFrames(tm: Phaser.Textures.TextureManager): void {
@@ -1336,6 +1453,20 @@ export class TextureGenerator {
     ctx.fillStyle = '#cffafe';
     ctx.beginPath(); ctx.arc(7, 7, 2.5, 0, Math.PI * 2); ctx.fill();
     this.refresh(tm, 'bullet_enemy_frost');
+
+    // Enemy Dark Void Orb (14x14 dark purple-violet glowing sphere with bright lavender core)
+    ctx = this.createCanvas(tm, 'bullet_dark_orb', 14, 14);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath(); ctx.arc(7, 7, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4c1d95';
+    ctx.beginPath(); ctx.arc(7, 7, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9333ea';
+    ctx.beginPath(); ctx.arc(7, 7, 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e9d5ff';
+    ctx.beginPath(); ctx.arc(7, 7, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(6, 6, 1, 1);
+    this.refresh(tm, 'bullet_dark_orb');
 
     // Boss Orb (larger fiery orb)
     ctx = this.createCanvas(tm, 'bullet_boss_orb', 18, 18);

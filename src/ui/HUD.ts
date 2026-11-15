@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { events } from '../core/EventBus';
 import { WeaponData } from '../types/weapon';
 import { RoomState } from '../types/room';
+import { DifficultyMode } from '../data/difficulty';
 
 export class HUD {
   private scene: Phaser.Scene;
@@ -42,6 +43,7 @@ export class HUD {
   // Minimap
   private minimapGraphics: Phaser.GameObjects.Graphics;
   private roomTitleText: Phaser.GameObjects.Text;
+  private difficultyBadge: Phaser.GameObjects.Container;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -137,6 +139,22 @@ export class HUD {
     this.roomTitleText = scene.add.text(1178, 122, '[1-1] Sảnh Xuất Phát', { ...fontStyle, fontSize: '10px', color: '#cbd5e1' }).setOrigin(0.5, 0);
     this.container.add(this.roomTitleText);
 
+    // Subtle Nightmare Mode pill under Minimap (x: 1090..1174, y: 145..163), clear of FPS (x ~ 1185..1260, y: 146)
+    this.difficultyBadge = scene.add.container(1090, 145).setVisible(false);
+    const diffBadgeBg = scene.add.graphics();
+    diffBadgeBg.fillStyle(0x450a0a, 0.9);
+    diffBadgeBg.fillRoundedRect(0, 0, 84, 18, 5);
+    diffBadgeBg.lineStyle(1, 0xef4444, 0.95);
+    diffBadgeBg.strokeRoundedRect(0, 0, 84, 18, 5);
+    const diffBadgeText = scene.add.text(42, 9, '🔥 ÁC MỘNG', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '10px',
+      color: '#fca5a5',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.difficultyBadge.add([diffBadgeBg, diffBadgeText]);
+    this.container.add(this.difficultyBadge);
+
     // --- 4. BOSS HEALTH BAR (Top-Center) ---
     this.bossContainer = scene.add.container(640, 35).setVisible(false);
     this.container.add(this.bossContainer);
@@ -174,10 +192,11 @@ export class HUD {
       this.updateSkill(data.progress, data.isReady);
     });
 
-    events.on('player:hero-selected', (data: { skillShortLabelVi: string; accentHex: string; accentColor: number }) => {
+    events.on('player:hero-selected', (data: { skillShortLabelVi: string; accentHex: string; accentColor: number; difficultyMode?: DifficultyMode }) => {
       this.skillShortLabel = data.skillShortLabelVi || 'KỸ NĂNG';
       this.skillColorHex = data.accentHex || '#ef4444';
       this.skillColorNum = data.accentColor || 0xef4444;
+      this.difficultyBadge.setVisible(data.difficultyMode === 'badass');
       this.updateSkill(1, true);
     });
 

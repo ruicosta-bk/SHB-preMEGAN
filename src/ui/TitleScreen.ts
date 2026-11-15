@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { audio } from '../core/AudioSystem';
 import { HEROES, HERO_LIST, HeroId, SkillVariant, getHeroSkillMeta } from '../data/heroes';
+import { DifficultyMode, DIFFICULTY_LABELS } from '../data/difficulty';
 import { WEAPONS } from '../data/weapons';
 import { getAllRecipesForDisplay } from '../data/merges';
 import {
@@ -18,13 +19,14 @@ export class TitleScreen {
   public isOpen: boolean = true;
   public selectedHeroId: HeroId = 'alchemist';
   public selectedSkillVariant: SkillVariant = 1;
+  public selectedDifficultyMode: DifficultyMode = 'normal';
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(300).setScrollFactor(0);
   }
 
-  public show(onStart: (heroId: HeroId, skillVariant: SkillVariant) => void): void {
+  public show(onStart: (heroId: HeroId, skillVariant: SkillVariant, difficultyMode: DifficultyMode) => void): void {
     this.isOpen = true;
     this.container.removeAll(true);
     this.container.setVisible(true);
@@ -523,11 +525,102 @@ export class TitleScreen {
 
     refreshMetaUI();
 
-    // Start Button (Y: 552..596)
-    const btnW = 300;
+    // Start Row (cy = 574): Difficulty Toggle (left), Start Button (center), Tip Box (right)
+    const btnW = 280;
     const btnH = 44;
     const btnY = 574;
 
+    // Left: Difficulty Toggle Pill (x: 47..460, cy: 574, width: 413, height: 42)
+    const diffX = 47;
+    const diffW = 413;
+    const diffH = 42;
+    const diffCenterX = diffX + diffW / 2;
+    let diffHovered = false;
+
+    const diffBg = this.scene.add.graphics();
+    this.container.add(diffBg);
+
+    const diffText = this.scene.add.text(diffCenterX, btnY, '', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '13.5px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.container.add(diffText);
+
+    const diffZone = this.scene.add.zone(diffCenterX, btnY, diffW, diffH).setInteractive({ useHandCursor: true });
+    this.container.add(diffZone);
+
+    // Right: Compact Difficulty / Scaling Tip Box (x: 820..1233, cy: 574, width: 413, height: 42)
+    const tipX = 820;
+    const tipW = 413;
+    const tipH = 42;
+    const tipCenterX = tipX + tipW / 2;
+
+    const tipBg = this.scene.add.graphics();
+    this.container.add(tipBg);
+
+    const tipText = this.scene.add.text(tipCenterX, btnY, '', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '11px',
+      color: '#cbd5e1',
+      align: 'center',
+      wordWrap: { width: tipW - 24 }
+    }).setOrigin(0.5);
+    this.container.add(tipText);
+
+    const refreshDifficultyUI = () => {
+      const isBadass = this.selectedDifficultyMode === 'badass';
+      const fillColor = isBadass ? (diffHovered ? 0x991b1b : 0x7f1d1d) : diffHovered ? 0x1e293b : 0x0f172a;
+      const strokeColor = isBadass ? (diffHovered ? 0xfbbf24 : 0xef4444) : diffHovered ? 0x7dd3fc : 0x38bdf8;
+      diffBg.clear();
+      diffBg.fillStyle(fillColor, 0.96);
+      diffBg.fillRoundedRect(diffX, btnY - diffH / 2, diffW, diffH, 10);
+      diffBg.lineStyle(2, strokeColor, 0.95);
+      diffBg.strokeRoundedRect(diffX, btnY - diffH / 2, diffW, diffH, 10);
+
+      diffText.setText(isBadass ? 'CHẾ ĐỘ: [ÁC MỘNG 🔥 (+60% 💎)]' : 'CHẾ ĐỘ: [THƯỜNG]');
+      diffText.setColor(isBadass ? '#fde68a' : '#e0f2fe');
+
+      tipBg.clear();
+      tipBg.fillStyle(0x111827, 0.9);
+      tipBg.fillRoundedRect(tipX, btnY - tipH / 2, tipW, tipH, 10);
+      tipBg.lineStyle(1.5, isBadass ? 0xb91c1c : 0x334155, 0.85);
+      tipBg.strokeRoundedRect(tipX, btnY - tipH / 2, tipW, tipH, 10);
+
+      tipText.setText(
+        isBadass
+          ? DIFFICULTY_LABELS.badass.descVi
+          : 'Mỗi tầng sâu quái mạnh dần! Ác Mộng +60% Ngọc Hồn'
+      );
+      tipText.setColor(isBadass ? '#fca5a5' : '#cbd5e1');
+    };
+
+    refreshDifficultyUI();
+
+    diffZone.on('pointerover', () => {
+      diffHovered = true;
+      refreshDifficultyUI();
+    });
+
+    diffZone.on('pointerout', () => {
+      diffHovered = false;
+      refreshDifficultyUI();
+    });
+
+    diffZone.on('pointerdown', () => {
+      audio.init();
+      audio.resume();
+      this.selectedDifficultyMode = this.selectedDifficultyMode === 'normal' ? 'badass' : 'normal';
+      if (this.selectedDifficultyMode === 'badass') {
+        audio.playBossAlert();
+      } else {
+        audio.playPickup();
+      }
+      refreshDifficultyUI();
+    });
+
+    // Center: Start Button (x: 500..780, cx = 640, width: 280, height: 44)
     const btnBg = this.scene.add.graphics();
     btnBg.fillStyle(0xd97706, 1.0);
     btnBg.fillRoundedRect(640 - btnW / 2, btnY - btnH / 2, btnW, btnH, 10);
@@ -567,7 +660,7 @@ export class TitleScreen {
       audio.resume();
       audio.playPickup();
       this.hide();
-      onStart(this.selectedHeroId, this.selectedSkillVariant);
+      onStart(this.selectedHeroId, this.selectedSkillVariant, this.selectedDifficultyMode);
     });
 
     // Bottom concise Merge Hints & Companion tip bar (Y: 616..698)

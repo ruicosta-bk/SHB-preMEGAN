@@ -31,6 +31,7 @@ export interface RunGemInput {
   enemiesDefeated: number;
   roomsCleared: number;
   floorNumber: number;
+  gemMultiplier?: number;
 }
 
 export interface RunResultInput extends RunGemInput {
@@ -300,7 +301,12 @@ export function calculateRunGems(input: RunGemInput): number {
   }
 
   const raw = floor * 6 + rooms * 2 + Math.floor(kills * 0.5) + victoryBonus;
-  return Math.max(5, raw);
+  const base = Math.max(5, raw);
+  const mult =
+    typeof input.gemMultiplier === 'number' && Number.isFinite(input.gemMultiplier) && input.gemMultiplier > 0
+      ? input.gemMultiplier
+      : 1;
+  return Math.round(base * mult);
 }
 
 export function recordRunResult(input: RunResultInput): RunResultSummary {

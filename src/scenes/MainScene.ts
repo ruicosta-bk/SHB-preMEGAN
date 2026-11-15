@@ -6,7 +6,8 @@ import { RoomManager, PickupItem } from '../world/RoomManager';
 import { PlayerController } from '../player/PlayerController';
 import { PetController } from '../player/PetController';
 import { TurretEntity } from '../player/TurretEntity';
-import { HeroId, SkillVariant } from '../data/heroes';
+import { HeroId, SkillVariant, HEROES, getHeroSkillMeta } from '../data/heroes';
+import { DifficultyMode, getFloorEnemyScale } from '../data/difficulty';
 import { getFloorMeta, TOTAL_FLOORS } from '../data/biomes';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { StatusManager } from '../combat/StatusManager';
@@ -30,6 +31,7 @@ export class MainScene extends Phaser.Scene {
   // Game state
   private currentHeroId: HeroId = 'alchemist';
   private currentSkillVariant: SkillVariant = 1;
+  private currentDifficultyMode: DifficultyMode = 'normal';
   private turrets: TurretEntity[] = [];
   private isGameRunning: boolean = false;
   private isPaused: boolean = false;
@@ -362,8 +364,12 @@ export class MainScene extends Phaser.Scene {
       this.handleGameOver(false);
     });
 
-    events.on('game:restart', (data?: { heroId?: HeroId; skillVariant?: SkillVariant }) => {
-      this.startNewRun(data?.heroId || this.currentHeroId, data?.skillVariant ?? this.currentSkillVariant);
+    events.on('game:restart', (data?: { heroId?: HeroId; skillVariant?: SkillVariant; difficultyMode?: DifficultyMode }) => {
+      this.startNewRun(
+        data?.heroId || this.currentHeroId,
+        data?.skillVariant ?? this.currentSkillVariant,
+        data?.difficultyMode ?? this.currentDifficultyMode
+      );
     });
 
     events.on('game:return-lobby', () => {
@@ -404,12 +410,15 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  public startNewRun(heroId?: HeroId, skillVariant?: SkillVariant): void {
+  public startNewRun(heroId?: HeroId, skillVariant?: SkillVariant, difficultyMode?: DifficultyMode): void {
     if (heroId) {
       this.currentHeroId = heroId;
     }
     if (skillVariant) {
       this.currentSkillVariant = skillVariant;
+    }
+    if (difficultyMode) {
+      this.currentDifficultyMode = difficultyMode;
     }
 
     // Clean any active run state cleanly before starting fresh
@@ -426,9 +435,9 @@ export class MainScene extends Phaser.Scene {
     this.seed = Math.floor(Math.random() * 99999) + 1;
 
     // Generate fresh seamless dungeon floor + corridors
-    const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor);
+    const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor, this.currentDifficultyMode);
     const corridors = DungeonGenerator.generateCorridors(floorRooms);
-    this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor);
+    this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor, this.currentDifficultyMode);
 
     // Spawn player (with Soul Gem meta bonuses) & pet in center of start room (Room 0)
     const startRoom = floorRooms[0];
@@ -444,6 +453,14 @@ export class MainScene extends Phaser.Scene {
       metaBonuses,
       this.currentSkillVariant
     );
+    const heroCfg = HEROES[this.currentHeroId] || HEROES.alchemist;
+    const skillMeta = getHeroSkillMeta(this.currentHeroId, this.currentSkillVariant);
+    events.emit('player:hero-selected', {
+      skillShortLabelVi: skillMeta.shortLabelVi,
+      accentHex: heroCfg.accentHex,
+      accentColor: heroCfg.accentColor,
+      difficultyMode: this.currentDifficultyMode
+    });
     this.player.setEffectsManager(this.effects);
     this.pet = new PetController(this, playerSpawnX, playerSpawnY);
 
@@ -489,9 +506,9 @@ export class MainScene extends Phaser.Scene {
         this.roomManager.clearCurrentRoomVisuals();
       }
 
-      const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor);
+      const floorRooms = DungeonGenerator.generateFloor(this.seed, this.currentFloor, this.currentDifficultyMode);
       const corridors = DungeonGenerator.generateCorridors(floorRooms);
-      this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor);
+      this.roomManager = new RoomManager(this, floorRooms, corridors, this.currentFloor, this.currentDifficultyMode);
 
       const startRoom = floorRooms[0];
       const spawnX = startRoom.worldX + startRoom.width / 2;
@@ -543,7 +560,8 @@ export class MainScene extends Phaser.Scene {
       enemiesDefeated: this.enemiesDefeated,
       roomsCleared,
       floorNumber: this.currentFloor,
-      floorCode: meta.code
+      floorCode: meta.code,
+      gemMultiplier: getFloorEnemyScale(this.currentFloor, this.currentDifficultyMode).gemMultiplier
     });
     audio.playGemReward();
     const stats = {

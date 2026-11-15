@@ -7,7 +7,7 @@ import { audio } from '../core/AudioSystem';
 
 export class BossIgnis extends EnemyBase {
   public phase: number = 1;
-  private attackState: 'idle' | 'radial' | 'spiral' | 'cross' | 'slam_windup' | 'slam_execute' | 'vulnerable' = 'idle';
+  private attackState: 'idle' | 'radial' | 'spiral' | 'cross' | 'slam_windup' | 'slam_execute' | 'meteor_barrage' | 'vulnerable' = 'idle';
   private stateTimer: number = 1.4; // Initial delay so player enters safely
   private currentAttackIndex: number = 0;
 
@@ -18,18 +18,34 @@ export class BossIgnis extends EnemyBase {
   private crossBurstsLeft: number = 0;
   private crossTimer: number = 0;
 
-  // Slam state
+  // Slam & Meteor barrage state
   private slamTargetX: number = 0;
   private slamTargetY: number = 0;
   private slamGraphic: Phaser.GameObjects.Graphics;
   private pendingSummons: { type: string; x: number; y: number }[] | null = null;
+  private meteorElapsed: number = 0;
+  private meteors: {
+    x: number;
+    y: number;
+    spawnDelay: number;
+    telegraphRemaining: number;
+    spawned: boolean;
+    erupted: boolean;
+  }[] = [];
 
   private stage: number = 1;
   private bossNameVi: string = 'Ignis Ignifer - Đại Pháp Sư Luyện Kim';
+  private readonly baseP1Hp: number;
+  private readonly baseP1Speed: number;
+  private hpScaleMult: number = 1;
+  private speedScaleMult: number = 1;
 
   constructor(scene: Phaser.Scene, x: number, y: number, stage: number = 1, bossNameVi?: string) {
     const p1Hp = 165 + (stage - 1) * 55;
-    super(scene, x, y, 'boss_ignis_p1', p1Hp, 72 + (stage - 1) * 10);
+    const p1Speed = 72 + (stage - 1) * 10;
+    super(scene, x, y, 'boss_ignis_p1', p1Hp, p1Speed);
+    this.baseP1Hp = p1Hp;
+    this.baseP1Speed = p1Speed;
     this.stage = stage;
     if (bossNameVi) this.bossNameVi = bossNameVi;
     if (stage === 2) {
@@ -45,6 +61,13 @@ export class BossIgnis extends EnemyBase {
 
   public getEnemyType(): string {
     return 'boss_ignis';
+  }
+
+  protected override onDifficultyScaled(): void {
+    this.hpScaleMult = this.maxHp / this.baseP1Hp;
+    this.speedScaleMult = this.speed / this.baseP1Speed;
+    this.stateTimer = Math.max(0.65, this.stateTimer / this.attackRateScale);
+    this.emitBossStats();
   }
 
   public consumeSummonRequest(): { type: string; x: number; y: number }[] | null {
@@ -67,14 +90,15 @@ export class BossIgnis extends EnemyBase {
     // Check Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
-      const p2Hp = 140 + (this.stage - 1) * 50;
+      const baseP2Hp = 140 + (this.stage - 1) * 50;
+      const p2Hp = Math.max(1, Math.ceil(baseP2Hp * this.hpScaleMult));
       this.hp = p2Hp;
       this.maxHp = p2Hp;
-      this.speed = 92 + (this.stage - 1) * 12;
+      this.speed = (92 + (this.stage - 1) * 12) * this.speedScaleMult;
       this.sprite.setTexture('boss_ignis_p2');
       this.sprite.setTint(this.stage === 2 ? 0x38bdf8 : 0xff6666);
       this.attackState = 'vulnerable';
-      this.stateTimer = 0.85;
+      this.stateTimer = Math.max(0.45, 0.85 / this.attackRateScale);
 
       // Summon biome guards when entering enraged Phase 2
       const guardA = this.stage === 2 ? 'frost_mage' : this.stage >= 3 ? 'fan_caster' : 'shooter';
@@ -143,7 +167,10 @@ export class BossIgnis extends EnemyBase {
         }
 
         if (this.stateTimer <= 0) {
-          const attacks = ['radial', 'spiral', 'cross', 'slam_windup'] as const;
+          const includeMeteor = (this.stage >= 2 && this.phase === 2) || this.stage >= 3;
+          const attacks: ('radial' | 'spiral' | 'cross' | 'slam_windup' | 'meteor_barrage')[] = includeMeteor
+            ? ['radial', 'meteor_barrage', 'spiral', 'cross', 'slam_windup']
+            : ['radial', 'spiral', 'cross', 'slam_windup'];
           this.currentAttackIndex = (this.currentAttackIndex + 1) % attacks.length;
           const nextAtk = attacks[this.currentAttackIndex];
 
@@ -151,32 +178,40 @@ export class BossIgnis extends EnemyBase {
             this.attackState = 'radial';
             this.executeRadialNova(playerX, playerY, pool);
             this.attackState = 'vulnerable';
-            this.stateTimer = this.phase === 1 ? 0.95 : 0.7;
+            this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.95 : 0.7) / this.attackRateScale);
           } else if (nextAtk === 'spiral') {
             this.attackState = 'spiral';
             this.spiralAngle = Math.atan2(dy, dx);
             this.spiralBulletsFired = 0;
             this.spiralTimer = 0;
-            this.stateTimer = this.phase === 1 ? 1.5 : 1.8;
+            this.stateTimer = Math.max(0.95, (this.phase === 1 ? 1.5 : 1.8) / this.attackRateScale);
           } else if (nextAtk === 'cross') {
             this.attackState = 'cross';
             this.crossBurstsLeft = this.phase === 1 ? 3 : 4;
             this.crossTimer = 0;
             this.spiralAngle = Math.atan2(dy, dx);
-            this.stateTimer = 1.6;
+            this.stateTimer = Math.max(1.0, 1.6 / this.attackRateScale);
           } else if (nextAtk === 'slam_windup') {
             this.attackState = 'slam_windup';
             this.slamTargetX = roomBounds ? Phaser.Math.Clamp(playerX, roomBounds.minX + 12, roomBounds.maxX - 12) : playerX;
             this.slamTargetY = roomBounds ? Phaser.Math.Clamp(playerY, roomBounds.minY + 12, roomBounds.maxY - 12) : playerY;
-            this.stateTimer = this.phase === 1 ? 0.75 : 0.6;
+            this.stateTimer = Math.max(0.42, (this.phase === 1 ? 0.75 : 0.6) / this.attackRateScale);
+          } else if (nextAtk === 'meteor_barrage') {
+            this.attackState = 'meteor_barrage';
+            this.meteorElapsed = 0;
+            this.meteors = [
+              { x: 0, y: 0, spawnDelay: 0, telegraphRemaining: 0.85, spawned: false, erupted: false },
+              { x: 0, y: 0, spawnDelay: 0.28, telegraphRemaining: 0.85, spawned: false, erupted: false },
+              { x: 0, y: 0, spawnDelay: 0.56, telegraphRemaining: 0.85, spawned: false, erupted: false }
+            ];
           }
         }
         break;
 
-      case 'spiral':
+      case 'spiral': {
         this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed * 0.55);
         this.spiralTimer += deltaSec;
-        const fireInterval = this.phase === 1 ? 0.075 : 0.055;
+        const fireInterval = Math.max(0.038, (this.phase === 1 ? 0.075 : 0.055) / this.attackRateScale);
         if (this.spiralTimer >= fireInterval && this.spiralBulletsFired < (this.phase === 1 ? 20 : 30)) {
           this.spiralTimer = 0;
           this.spiralBulletsFired++;
@@ -188,7 +223,7 @@ export class BossIgnis extends EnemyBase {
             y: this.sprite.y,
             angleRad: this.spiralAngle,
             speed: this.phase === 1 ? 200 : 240,
-            damage: 2,
+            damage: 2 + this.bonusDamage,
             isPlayer: false,
             texture: 'bullet_enemy_orb',
             range: 460
@@ -200,7 +235,7 @@ export class BossIgnis extends EnemyBase {
               y: this.sprite.y,
               angleRad: this.spiralAngle + (Math.PI * 2) / 3,
               speed: 230,
-              damage: 2,
+              damage: 2 + this.bonusDamage,
               isPlayer: false,
               texture: 'bullet_boss_orb',
               range: 460
@@ -210,7 +245,7 @@ export class BossIgnis extends EnemyBase {
               y: this.sprite.y,
               angleRad: this.spiralAngle + (Math.PI * 4) / 3,
               speed: 230,
-              damage: 2,
+              damage: 2 + this.bonusDamage,
               isPlayer: false,
               texture: 'bullet_boss_orb',
               range: 460
@@ -220,15 +255,16 @@ export class BossIgnis extends EnemyBase {
 
         if (this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 0.9 : 0.65;
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.9 : 0.65) / this.attackRateScale);
         }
         break;
+      }
 
       case 'cross':
         this.crossTimer -= deltaSec;
         if (this.crossTimer <= 0 && this.crossBurstsLeft > 0) {
           this.crossBurstsLeft--;
-          this.crossTimer = this.phase === 1 ? 0.38 : 0.28;
+          this.crossTimer = Math.max(0.18, (this.phase === 1 ? 0.38 : 0.28) / this.attackRateScale);
           this.spiralAngle += Math.PI / 4;
           const arms = this.phase === 1 ? 4 : 6;
           audio.playShootShotgun();
@@ -239,7 +275,7 @@ export class BossIgnis extends EnemyBase {
               y: this.sprite.y + Math.sin(ang) * 18,
               angleRad: ang,
               speed: this.phase === 1 ? 250 : 285,
-              damage: 2,
+              damage: 2 + this.bonusDamage,
               isPlayer: false,
               texture: 'bullet_enemy_laser',
               range: 480
@@ -248,7 +284,7 @@ export class BossIgnis extends EnemyBase {
         }
         if (this.crossBurstsLeft <= 0 && this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 0.9 : 0.65;
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.9 : 0.65) / this.attackRateScale);
         }
         break;
 
@@ -266,9 +302,70 @@ export class BossIgnis extends EnemyBase {
           this.attackState = 'slam_execute';
           this.executeSlam(playerX, playerY, pool, walls, roomBounds);
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 1.0 : 0.75;
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 1.0 : 0.75) / this.attackRateScale);
         }
         break;
+
+      case 'meteor_barrage': {
+        this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed * 0.45);
+        this.meteorElapsed += deltaSec;
+        this.slamGraphic.clear();
+
+        let allErupted = true;
+        for (let idx = 0; idx < this.meteors.length; idx++) {
+          const m = this.meteors[idx];
+          if (m.erupted) continue;
+          allErupted = false;
+
+          if (!m.spawned && this.meteorElapsed >= m.spawnDelay) {
+            m.spawned = true;
+            const spreadAngle = (idx * 2.1) + Math.random() * 0.8;
+            const spreadDist = idx === 0 ? 12 : 34;
+            const rawX = playerX + Math.cos(spreadAngle) * spreadDist;
+            const rawY = playerY + Math.sin(spreadAngle) * spreadDist;
+            m.x = roomBounds ? Phaser.Math.Clamp(rawX, roomBounds.minX + 16, roomBounds.maxX - 16) : rawX;
+            m.y = roomBounds ? Phaser.Math.Clamp(rawY, roomBounds.minY + 16, roomBounds.maxY - 16) : rawY;
+          }
+
+          if (!m.spawned) continue;
+
+          m.telegraphRemaining -= deltaSec;
+          const progress = Phaser.Math.Clamp(1 - m.telegraphRemaining / 0.85, 0, 1);
+
+          this.slamGraphic.lineStyle(2.5, 0xdc2626, 0.95);
+          this.slamGraphic.strokeCircle(m.x, m.y, 46);
+          this.slamGraphic.fillStyle(0xef4444, 0.14 + progress * 0.24);
+          this.slamGraphic.fillCircle(m.x, m.y, 46 * Math.max(0.2, progress));
+
+          if (m.telegraphRemaining <= 0) {
+            m.erupted = true;
+            const baseAng = (idx * Math.PI) / 6;
+            for (let i = 0; i < 6; i++) {
+              const ang = baseAng + (i / 6) * Math.PI * 2;
+              pool.spawn({
+                x: m.x + Math.cos(ang) * 8,
+                y: m.y + Math.sin(ang) * 8,
+                angleRad: ang,
+                speed: 225,
+                damage: 2 + this.bonusDamage,
+                isPlayer: false,
+                element: 'fire',
+                texture: 'bullet_inferno',
+                range: 320
+              });
+            }
+            audio.playExplosion();
+            this.scene.cameras.main.shake(100, 0.007);
+          }
+        }
+
+        if (allErupted) {
+          this.slamGraphic.clear();
+          this.attackState = 'vulnerable';
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.9 : 0.7) / this.attackRateScale);
+        }
+        break;
+      }
 
       case 'vulnerable':
         this.slamGraphic.clear();
@@ -276,7 +373,7 @@ export class BossIgnis extends EnemyBase {
         if (this.stateTimer <= 0) {
           this.sprite.setAlpha(1.0);
           this.attackState = 'idle';
-          this.stateTimer = this.phase === 1 ? 0.55 : 0.35;
+          this.stateTimer = Math.max(0.25, (this.phase === 1 ? 0.55 : 0.35) / this.attackRateScale);
         }
         break;
     }
@@ -297,7 +394,7 @@ export class BossIgnis extends EnemyBase {
         y: this.sprite.y + Math.sin(angle) * 24,
         angleRad: angle,
         speed: this.phase === 1 ? 205 : 245,
-        damage: 2,
+        damage: 2 + this.bonusDamage,
         isPlayer: false,
         texture: 'bullet_boss_orb',
         range: 480
@@ -311,7 +408,7 @@ export class BossIgnis extends EnemyBase {
         y: this.sprite.y + Math.sin(baseAngle + off) * 24,
         angleRad: baseAngle + off,
         speed: this.phase === 1 ? 265 : 300,
-        damage: 2,
+        damage: 2 + this.bonusDamage,
         isPlayer: false,
         element: this.stage === 2 ? 'frost' : 'fire',
         texture: this.stage === 2 ? 'bullet_enemy_frost' : 'bullet_enemy_orb',
@@ -343,7 +440,7 @@ export class BossIgnis extends EnemyBase {
         y: this.sprite.y,
         angleRad: angle,
         speed: this.phase === 1 ? 175 : 210,
-        damage: 3,
+        damage: 3 + this.bonusDamage,
         isPlayer: false,
         texture: 'bullet_enemy_orb',
         range: 280
@@ -357,7 +454,7 @@ export class BossIgnis extends EnemyBase {
         y: this.sprite.y,
         angleRad: aimAng + off,
         speed: 250,
-        damage: 2,
+        damage: 2 + this.bonusDamage,
         isPlayer: false,
         texture: 'bullet_boss_orb',
         range: 360
@@ -373,6 +470,11 @@ export class BossIgnis extends EnemyBase {
       nameVi: this.bossNameVi,
       isDead: this.isDead
     });
+  }
+
+  protected override onDeath(): void {
+    this.slamGraphic.clear();
+    super.onDeath();
   }
 
   public override destroy(): void {

@@ -35,10 +35,15 @@ export class BossFrost extends EnemyBase {
   // Frost ring telegraph & burst
   private frostGraphic: Phaser.GameObjects.Graphics | null = null;
   private ringBurstExecuted: boolean = false;
+  private frostRingWindupDuration: number = FROST_RING_WINDUP_SEC;
   private pendingSummons: { type: string; x: number; y: number }[] | null = null;
 
   private stage: number;
   private bossNameVi: string;
+  private readonly baseP1Hp: number;
+  private readonly baseP1Speed: number = 76;
+  private hpScaleMult: number = 1;
+  private speedScaleMult: number = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -49,6 +54,7 @@ export class BossFrost extends EnemyBase {
   ) {
     const p1Hp = 195 + Math.max(0, stage - 2) * 55;
     super(scene, x, y, 'boss_frost_p1', p1Hp, 76);
+    this.baseP1Hp = p1Hp;
     this.stage = stage;
     this.bossNameVi = bossNameVi || 'Ignis Ấn Băng Cổ Ngữ';
 
@@ -62,6 +68,13 @@ export class BossFrost extends EnemyBase {
 
   public override getEnemyType(): string {
     return 'boss_frost';
+  }
+
+  protected override onDifficultyScaled(): void {
+    this.hpScaleMult = this.maxHp / this.baseP1Hp;
+    this.speedScaleMult = this.speed / this.baseP1Speed;
+    this.stateTimer = Math.max(0.65, this.stateTimer / this.attackRateScale);
+    this.emitBossStats();
   }
 
   public consumeSummonRequest(): { type: string; x: number; y: number }[] | null {
@@ -93,17 +106,18 @@ export class BossFrost extends EnemyBase {
     // Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
-      const p2Hp = 170 + Math.max(0, this.stage - 2) * 50;
+      const baseP2Hp = 170 + Math.max(0, this.stage - 2) * 50;
+      const p2Hp = Math.max(1, Math.ceil(baseP2Hp * this.hpScaleMult));
       this.hp = p2Hp;
       this.maxHp = p2Hp;
-      this.speed = 96;
+      this.speed = 96 * this.speedScaleMult;
       this.sprite.setTexture('boss_frost_p2');
       this.sprite.setTint(0x67e8f9);
       this.hitFlashTimer = 0.28;
       this.sprite.setAlpha(1.0);
       this.frostGraphic?.clear();
       this.attackState = 'vulnerable';
-      this.stateTimer = 0.85;
+      this.stateTimer = Math.max(0.45, 0.85 / this.attackRateScale);
 
       this.pendingSummons = [
         { type: 'frost_mage', x: this.sprite.x - 64, y: this.sprite.y },
@@ -175,23 +189,24 @@ export class BossFrost extends EnemyBase {
           if (nextAtk === 'frost_nova') {
             this.attackState = 'frost_nova';
             this.novaExecuted = false;
-            this.stateTimer = 0.22;
+            this.stateTimer = Math.max(0.14, 0.22 / this.attackRateScale);
           } else if (nextAtk === 'ice_lance') {
             this.attackState = 'ice_lance';
             this.lanceShotsLeft = 3;
             this.lanceTimer = 0;
             this.lanceAimAngle = Math.atan2(dy, dx);
-            this.stateTimer = 0.6;
+            this.stateTimer = Math.max(0.38, 0.6 / this.attackRateScale);
           } else if (nextAtk === 'blizzard_cross') {
             this.attackState = 'blizzard_cross';
             this.crossBurstsLeft = 4;
             this.crossTimer = 0;
             this.spiralAngle = Math.atan2(dy, dx);
-            this.stateTimer = 1.25;
+            this.stateTimer = Math.max(0.75, 1.25 / this.attackRateScale);
           } else {
             this.attackState = 'frost_ring_windup';
             this.ringBurstExecuted = false;
-            this.stateTimer = FROST_RING_WINDUP_SEC;
+            this.frostRingWindupDuration = Math.max(0.65, FROST_RING_WINDUP_SEC / this.attackRateScale);
+            this.stateTimer = this.frostRingWindupDuration;
           }
         }
         break;
@@ -202,7 +217,7 @@ export class BossFrost extends EnemyBase {
           this.novaExecuted = true;
           this.executeFrostNova(playerX, playerY, pool);
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 0.85 : 0.65;
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.85 : 0.65) / this.attackRateScale);
         }
         break;
 
@@ -213,7 +228,7 @@ export class BossFrost extends EnemyBase {
           const spreadOffsets = [-0.18, 0, 0.18];
           const angle = this.lanceAimAngle + spreadOffsets[shotIdx];
           this.lanceShotsLeft--;
-          this.lanceTimer = this.phase === 1 ? 0.15 : 0.12;
+          this.lanceTimer = Math.max(0.08, (this.phase === 1 ? 0.15 : 0.12) / this.attackRateScale);
 
           audio.playEnemyShoot();
           pool.spawn({
@@ -221,7 +236,7 @@ export class BossFrost extends EnemyBase {
             y: this.sprite.y + Math.sin(angle) * 20,
             angleRad: angle,
             speed: 305,
-            damage: 2,
+            damage: 2 + this.bonusDamage,
             isPlayer: false,
             element: 'frost',
             texture: 'bullet_enemy_laser',
@@ -231,7 +246,7 @@ export class BossFrost extends EnemyBase {
         }
         if (this.lanceShotsLeft <= 0 && this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 0.8 : 0.6;
+          this.stateTimer = Math.max(0.4, (this.phase === 1 ? 0.8 : 0.6) / this.attackRateScale);
         }
         break;
 
@@ -240,7 +255,7 @@ export class BossFrost extends EnemyBase {
         this.crossTimer -= deltaSec;
         if (this.crossTimer <= 0 && this.crossBurstsLeft > 0) {
           this.crossBurstsLeft--;
-          this.crossTimer = 0.28;
+          this.crossTimer = Math.max(0.16, 0.28 / this.attackRateScale);
           this.spiralAngle += Math.PI / 8;
           audio.playEnemyShoot();
           for (let i = 0; i < 8; i++) {
@@ -250,7 +265,7 @@ export class BossFrost extends EnemyBase {
               y: this.sprite.y + Math.sin(ang) * 18,
               angleRad: ang,
               speed: 205,
-              damage: 2,
+              damage: 2 + this.bonusDamage,
               isPlayer: false,
               element: 'frost',
               texture: 'bullet_frost',
@@ -260,13 +275,13 @@ export class BossFrost extends EnemyBase {
         }
         if (this.crossBurstsLeft <= 0 && this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = 0.65;
+          this.stateTimer = Math.max(0.4, 0.65 / this.attackRateScale);
         }
         break;
 
       case 'frost_ring_windup': {
         this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed * 0.4);
-        const progress = Phaser.Math.Clamp(1 - this.stateTimer / FROST_RING_WINDUP_SEC, 0, 1);
+        const progress = Phaser.Math.Clamp(1 - this.stateTimer / this.frostRingWindupDuration, 0, 1);
         const innerRadius = 20 + (FROST_RING_RADIUS - 20) * progress;
 
         if (this.frostGraphic) {
@@ -301,7 +316,7 @@ export class BossFrost extends EnemyBase {
         if (this.stateTimer <= 0) {
           this.frostGraphic?.clear();
           this.attackState = 'vulnerable';
-          this.stateTimer = this.phase === 1 ? 0.95 : 0.7;
+          this.stateTimer = Math.max(0.45, (this.phase === 1 ? 0.95 : 0.7) / this.attackRateScale);
         }
         break;
       }
@@ -312,7 +327,7 @@ export class BossFrost extends EnemyBase {
         if (this.stateTimer <= 0) {
           this.sprite.setAlpha(1.0);
           this.attackState = 'idle';
-          this.stateTimer = this.phase === 1 ? 0.55 : 0.35;
+          this.stateTimer = Math.max(0.25, (this.phase === 1 ? 0.55 : 0.35) / this.attackRateScale);
         }
         break;
     }
@@ -330,7 +345,7 @@ export class BossFrost extends EnemyBase {
         y: this.sprite.y + Math.sin(angle) * 22,
         angleRad: angle,
         speed: 185,
-        damage: 2,
+        damage: 2 + this.bonusDamage,
         isPlayer: false,
         element: 'frost',
         texture: 'bullet_frost',
@@ -357,7 +372,7 @@ export class BossFrost extends EnemyBase {
         y: playerY,
         angleRad: Math.atan2(dy, dx),
         speed: 120,
-        damage: this.phase === 1 ? 1 : 2,
+        damage: (this.phase === 1 ? 1 : 2) + this.bonusDamage,
         isPlayer: false,
         element: 'frost',
         texture: 'bullet_frost',
@@ -374,7 +389,7 @@ export class BossFrost extends EnemyBase {
         y: this.sprite.y + Math.sin(angle) * 20,
         angleRad: angle,
         speed: 215,
-        damage: 2,
+        damage: 2 + this.bonusDamage,
         isPlayer: false,
         element: 'frost',
         texture: 'bullet_frost',
