@@ -216,13 +216,13 @@ describe('Upgrade System Unit Tests', () => {
     // Verify PlayerController tracks energy_capacitor stacks cleanly up to maxStacks=2
     const player = new PlayerController(createMockPlayerScene(), 100, 100, 'knight');
     const baseMaxEnergy = player.stats.maxEnergy;
-    expect(player.getUpgradeStacks().get('energy_capacitor') ?? 0).toBe(0);
+    expect(player.getUpgradeStackCount('energy_capacitor')).toBe(0);
     expect(player.applyUpgrade('energy_capacitor')).toBe(true);
     expect(player.stats.maxEnergy).toBe(baseMaxEnergy + 60);
-    expect(player.getUpgradeStacks().get('energy_capacitor')).toBe(1);
+    expect(player.getUpgradeStackCount('energy_capacitor')).toBe(1);
     expect(player.applyUpgrade('energy_capacitor')).toBe(true);
     expect(player.stats.maxEnergy).toBe(baseMaxEnergy + 120);
-    expect(player.getUpgradeStacks().get('energy_capacitor')).toBe(2);
+    expect(player.getUpgradeStackCount('energy_capacitor')).toBe(2);
     expect(player.applyUpgrade('energy_capacitor')).toBe(false);
   });
 });

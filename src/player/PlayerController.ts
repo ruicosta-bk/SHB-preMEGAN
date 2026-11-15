@@ -271,6 +271,10 @@ export class PlayerController {
     return new Map(this.upgrades);
   }
 
+  public getUpgradeStackCount(id: UpgradeId): number {
+    return this.upgrades.get(id) ?? 0;
+  }
+
   public getAvailableUpgrades(count: number = 3): UpgradeData[] {
     return getAvailableUpgradeChoices(this.upgrades, count);
   }
