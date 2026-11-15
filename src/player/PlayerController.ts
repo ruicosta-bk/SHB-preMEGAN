@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { Stats, DamageInfo, DamageResult } from '../types/entity';
-import { WeaponData, WeaponId } from '../types/weapon';
+import { WeaponCoreData, WeaponCoreId, WeaponData, WeaponId } from '../types/weapon';
 import { UpgradeId } from '../types/upgrade';
 import { WEAPONS } from '../data/weapons';
+import { getWeaponCore } from '../data/weaponCores';
 import { findMergeResult } from '../data/merges';
 import { UPGRADES } from '../data/upgrades';
 import { HEROES, HeroConfig, HeroId, SkillVariant, getHeroSkillMeta, shouldResetSkillOnKill } from '../data/heroes';
@@ -121,6 +122,7 @@ export class PlayerController {
 
   // Milestone 4: Weapon forge upgrades, Vending drink buffs & Biome terrain hazards
   public forgeLevels: Map<string, number> = new Map();
+  private weaponCores: Map<WeaponId, WeaponCoreId> = new Map();
   private fireRateBonus: number = 1.0;
   private isOnIce: boolean = false;
   private glideVx: number = 0;
@@ -309,6 +311,20 @@ export class PlayerController {
     audio.playPickup();
     this.emitWeaponChange();
     return nextLevel;
+  }
+
+  public getWeaponCore(weaponId?: WeaponId): WeaponCoreId | null {
+    const targetId = weaponId ?? this.getCurrentWeapon().id;
+    return this.weaponCores.get(targetId) ?? null;
+  }
+
+  public attachCoreToCurrentWeapon(coreId: WeaponCoreId): { weapon: WeaponData; core: WeaponCoreData } {
+    const weapon = this.getCurrentWeapon();
+    const core = getWeaponCore(coreId);
+    this.weaponCores.set(weapon.id, coreId);
+    audio.playCoreAttach();
+    this.emitWeaponChange();
+    return { weapon, core };
   }
 
   public setEffectsManager(fx: EffectsManager): void {
@@ -886,6 +902,17 @@ export class PlayerController {
     solidColliders: { x: number; y: number; width: number; height: number }[] = []
   ): void {
     const weapon = this.getCurrentWeapon();
+    const attachedCore = getWeaponCore(this.getWeaponCore(weapon.id));
+    const coreBonusDamage = attachedCore ? attachedCore.bonusDamage : 0;
+    const effectiveElement: 'fire' | 'frost' | 'lightning' | 'poison' | undefined =
+      attachedCore?.element ??
+      (weapon.appliesBurn || weapon.id === 'staff'
+        ? 'fire'
+        : weapon.appliesChill
+          ? 'frost'
+          : weapon.isChainLightning
+            ? 'lightning'
+            : undefined);
 
     // Check energy cost (free during Knight Rapid Overdrive)
     const effectiveEnergyCost = this.overdriveTimer > 0 ? 0 : weapon.energyCost;
@@ -913,7 +940,17 @@ export class PlayerController {
 
     // Continuous Beam Laser attack
     if (weapon.category === 'beam') {
-      this.fireLaserBeam(aimAngle, weapon.damage * damageMultiplier + berserkBonusDamage, weapon.range, isCrit, solidColliders);
+      const isSolar = weapon.id === 'solar_laser';
+      const beamDamage = (weapon.damage + coreBonusDamage) * damageMultiplier + berserkBonusDamage;
+      const beamColor = attachedCore ? attachedCore.colorNum : isSolar ? 0xf59e0b : 0xf43f5e;
+      const beamInnerColor = isSolar ? 0xfef08a : 0xffffff;
+      const beamWidth = isSolar ? 10 : 6;
+      this.fireLaserBeam(aimAngle, beamDamage, weapon.range, isCrit, solidColliders, {
+        color: beamColor,
+        innerColor: beamInnerColor,
+        width: beamWidth,
+        element: effectiveElement
+      });
       return;
     }
 
@@ -932,8 +969,10 @@ export class PlayerController {
           this.sprite.y + Math.sin(aimAngle) * 24
         );
         this.slashSprite.setRotation(aimAngle);
-        if (weapon.appliesChill) {
+        if (effectiveElement === 'frost') {
           this.slashSprite.setTint(0x67e8f9);
+        } else if (attachedCore) {
+          this.slashSprite.setTint(attachedCore.colorNum);
         } else {
           this.slashSprite.clearTint();
         }
@@ -964,9 +1003,9 @@ export class PlayerController {
         angle: aimAngle,
         radius,
         arcDeg: arcDegrees,
-        damage: (weapon.damage + bladeBonus) * damageMultiplier + berserkBonusDamage,
+        damage: (weapon.damage + bladeBonus + coreBonusDamage) * damageMultiplier + berserkBonusDamage,
         isCrit,
-        element: weapon.appliesChill ? 'frost' : undefined
+        element: effectiveElement
       });
 
       // Frost Greatsword fires 3 piercing/chill ice shards in a forward fan
@@ -982,10 +1021,10 @@ export class PlayerController {
               y: this.sprite.y + Math.sin(aimAngle) * 20 + pyOff,
               angleRad: bulletAngle,
               speed: 460,
-              damage: Math.max(1, Math.round((5 * damageMultiplier + berserkBonusDamage) * dmgScale)),
+              damage: Math.max(1, Math.round(((5 + coreBonusDamage) * damageMultiplier + berserkBonusDamage) * dmgScale)),
               isPlayer: true,
               isCrit,
-              element: 'frost',
+              element: effectiveElement ?? 'frost',
               texture: weapon.bulletTexture,
               range: 420,
               pierceCount: 2 + extraPierce,
@@ -1030,24 +1069,24 @@ export class PlayerController {
       case 'thunder_staff':
         audio.playLightning();
         break;
+      case 'boomerang_blade':
+        audio.playBoomerang();
+        break;
       default:
-        audio.playShootPistol();
+        if (weapon.isBoomerang) {
+          audio.playBoomerang();
+        } else {
+          audio.playShootPistol();
+        }
         break;
     }
 
     // Spawn pellets (shotgun_plus grants +2 extra pellets, Knight Dual-Wield fires a parallel twin volley)
-    const baseDamage = weapon.damage * damageMultiplier + berserkBonusDamage;
+    const baseDamage = (weapon.damage + coreBonusDamage) * damageMultiplier + berserkBonusDamage;
     const extraPellets = weapon.pellets > 1 && this.upgrades.has('shotgun_plus') ? 2 : 0;
     const totalPellets = weapon.pellets + extraPellets;
     const spreadRad = Phaser.Math.DegToRad(weapon.spreadAngle);
-    const bulletElement: 'fire' | 'frost' | 'lightning' | undefined =
-      weapon.appliesBurn || weapon.id === 'staff'
-        ? 'fire'
-        : weapon.appliesChill
-          ? 'frost'
-          : weapon.isChainLightning
-            ? 'lightning'
-            : undefined;
+    const bulletElement = effectiveElement;
 
     const fireVolley = (perpOffset: number, dmgScale: number) => {
       const pxOff = -Math.sin(aimAngle) * perpOffset;
@@ -1076,6 +1115,9 @@ export class PlayerController {
           isPlayer: true,
           isCrit,
           isHoming: !!weapon.isHoming,
+          isBoomerang: !!weapon.isBoomerang,
+          isFrostNova: !!weapon.isFrostNova,
+          ownerRef: weapon.isBoomerang ? this.sprite : undefined,
           element: bulletElement,
           texture: weapon.bulletTexture,
           range: weapon.range,
@@ -1095,7 +1137,20 @@ export class PlayerController {
   }
 
   private fireBowArrow(aimAngle: number, pool: ProjectilePool, chargeRatio: number): void {
-    const weapon = WEAPONS.bow;
+    const current = this.getCurrentWeapon();
+    const weapon = current.category === 'bow' ? current : WEAPONS.bow;
+    const attachedCore = getWeaponCore(this.getWeaponCore(weapon.id));
+    const coreBonusDamage = attachedCore ? attachedCore.bonusDamage : 0;
+    const effectiveElement: 'fire' | 'frost' | 'lightning' | 'poison' | undefined =
+      attachedCore?.element ??
+      (weapon.appliesBurn
+        ? 'fire'
+        : weapon.appliesChill
+          ? 'frost'
+          : weapon.isChainLightning
+            ? 'lightning'
+            : undefined);
+
     const effectiveEnergyCost = this.overdriveTimer > 0 ? 0 : weapon.energyCost;
     if (effectiveEnergyCost > 0) {
       if (!DamageCalculator.consumeEnergy(this.stats, effectiveEnergyCost)) {
@@ -1124,9 +1179,10 @@ export class PlayerController {
       y: this.sprite.y + Math.sin(aimAngle) * 18,
       angleRad: aimAngle,
       speed: weapon.bulletSpeed * (0.65 + 0.45 * chargeRatio),
-      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0) * forgeMult) + berserkBonusDamage),
+      damage: Math.max(4, Math.round((weapon.damage + coreBonusDamage) * chargeRatio * (isCrit ? 1.5 : 1.0) * forgeMult) + berserkBonusDamage),
       isPlayer: true,
       isCrit,
+      element: effectiveElement,
       texture: weapon.bulletTexture,
       range: weapon.range,
       pierceCount: (chargeRatio >= 0.75 ? weapon.pierceCount : 1) + extraPierce,
@@ -1140,8 +1196,30 @@ export class PlayerController {
     damage: number,
     maxRange: number,
     isCrit: boolean,
-    solidColliders: { x: number; y: number; width: number; height: number }[]
+    solidColliders: { x: number; y: number; width: number; height: number }[],
+    options?: {
+      color?: number;
+      innerColor?: number;
+      width?: number;
+      element?: 'fire' | 'frost' | 'lightning' | 'poison';
+    }
   ): void {
+    const weapon = this.getCurrentWeapon();
+    const attachedCore = getWeaponCore(this.getWeaponCore(weapon.id));
+    const effectiveElement: 'fire' | 'frost' | 'lightning' | 'poison' | undefined =
+      options?.element ??
+      attachedCore?.element ??
+      (weapon.appliesBurn
+        ? 'fire'
+        : weapon.appliesChill
+          ? 'frost'
+          : weapon.isChainLightning
+            ? 'lightning'
+            : undefined);
+    const outerColor = options?.color ?? (attachedCore ? attachedCore.colorNum : weapon.id === 'solar_laser' ? 0xf59e0b : 0xf43f5e);
+    const innerColor = options?.innerColor ?? (weapon.id === 'solar_laser' ? 0xfef08a : 0xffffff);
+    const baseWidth = options?.width ?? (weapon.id === 'solar_laser' ? 10 : 6);
+
     this.weaponRecoilOffset = 2;
     audio.playShootPenetrator();
 
@@ -1171,13 +1249,13 @@ export class PlayerController {
     }
 
     const beamGfx = this.scene.add.graphics().setDepth(17);
-    beamGfx.lineStyle(isCrit ? 8 : 6, 0xf43f5e, 0.75);
+    beamGfx.lineStyle(isCrit ? baseWidth + 2 : baseWidth, outerColor, 0.75);
     beamGfx.beginPath();
     beamGfx.moveTo(startX, startY);
     beamGfx.lineTo(endX, endY);
     beamGfx.strokePath();
 
-    beamGfx.lineStyle(2.5, 0xffffff, 1.0);
+    beamGfx.lineStyle(weapon.id === 'solar_laser' ? 3.5 : 2.5, innerColor, 1.0);
     beamGfx.beginPath();
     beamGfx.moveTo(startX, startY);
     beamGfx.lineTo(endX, endY);
@@ -1196,7 +1274,8 @@ export class PlayerController {
       x2: endX,
       y2: endY,
       damage,
-      isCrit
+      isCrit,
+      element: effectiveElement
     });
   }
 
@@ -1853,6 +1932,7 @@ export class PlayerController {
 
   private emitWeaponChange(): void {
     const cur = this.getCurrentWeapon();
+    const sec = this.getSecondaryWeapon();
     const forgeLvl = this.getForgeLevel(cur.id);
     const displayWeapon: WeaponData =
       forgeLvl > 0
@@ -1870,8 +1950,10 @@ export class PlayerController {
     }
     events.emit('player:weapon-swapped', {
       current: displayWeapon,
-      secondary: this.getSecondaryWeapon(),
-      activeIndex: this.activeSlotIndex
+      secondary: sec,
+      activeIndex: this.activeSlotIndex,
+      currentCore: this.getWeaponCore(cur.id),
+      secondaryCore: sec ? this.getWeaponCore(sec.id) : null
     });
   }
 

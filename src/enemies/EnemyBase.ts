@@ -4,6 +4,7 @@ import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { StatusManager, EntityWithStatus } from '../combat/StatusManager';
+import { ELITE_AFFIXES, EliteAffixId, EliteAffixMeta, pickRandomEliteAffix } from '../data/eliteAffixes';
 
 export abstract class EnemyBase implements EntityWithStatus {
   public id: string;
@@ -16,14 +17,17 @@ export abstract class EnemyBase implements EntityWithStatus {
   public speed: number;
   public isDead: boolean = false;
   public isElite: boolean = false;
+  public eliteAffix: EliteAffixMeta | null = null;
   public statusEffects: Map<string, StatusEffect> = new Map();
 
   protected hitFlashTimer: number = 0;
   protected knockbackVx: number = 0;
   protected knockbackVy: number = 0;
   protected eliteAura: Phaser.GameObjects.Graphics | null = null;
+  protected eliteBadge: Phaser.GameObjects.Text | null = null;
   protected bobTimer: number = Math.random() * Math.PI * 2;
   private hasElementalTint: boolean = false;
+  private eliteRegenTimer: number = 0;
   protected attackRateScale: number = 1;
   protected bonusDamage: number = 0;
   private difficultyApplied: boolean = false;
@@ -42,21 +46,37 @@ export abstract class EnemyBase implements EntityWithStatus {
     this.sprite = scene.add.sprite(x, y, texture).setDepth(8);
   }
 
-  public promoteToElite(): void {
+  public promoteToElite(affixId?: EliteAffixId): void {
     if (this.isElite) return;
     this.isElite = true;
+    const affix = affixId ? ELITE_AFFIXES[affixId] : pickRandomEliteAffix();
+    this.eliteAffix = affix;
     this.maxHp = Math.ceil(this.maxHp * 2.4);
     this.hp = this.maxHp;
-    this.speed *= 1.15;
+    this.speed *= 1.15 * affix.speedMult;
+    this.attackRateScale *= affix.attackRateMult;
     this.sprite.setScale(1.38);
     this.shadow.setScale(1.35);
 
     this.eliteAura = this.scene.add.graphics().setDepth(6);
-    this.eliteAura.lineStyle(2, 0xf59e0b, 0.9);
+    this.eliteAura.lineStyle(2, affix.colorNum, 0.9);
     this.eliteAura.strokeCircle(0, 0, 17);
-    this.eliteAura.fillStyle(0xef4444, 0.22);
-    this.eliteAura.fillCircle(0, 0, 17);
+    this.eliteAura.fillStyle(affix.colorNum, 0.22);
+    this.eliteAura.fillCircle(0, 0, 14);
     this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
+
+    this.eliteBadge = this.scene.add.text(this.sprite.x, this.sprite.y - 24, `[${affix.shortVi}]`, {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: affix.colorHex,
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5).setDepth(12);
+  }
+
+  public isVolatileElite(): boolean {
+    return this.isElite && this.eliteAffix?.id === 'volatile';
   }
 
   public applyDifficultyScaling(
@@ -103,6 +123,10 @@ export abstract class EnemyBase implements EntityWithStatus {
       StatusManager.applyStatus(this, 'freeze', 2.5, 1, 0.5, 0.5);
     }
 
+    if (this.eliteAffix && this.eliteAffix.damageTakenMult !== 1 && amt > 0) {
+      amt = Math.max(1, Math.round(amt * this.eliteAffix.damageTakenMult));
+    }
+
     this.hp -= amt;
     this.hitFlashTimer = 0.12;
     this.sprite.setTint(0xffffff);
@@ -147,6 +171,15 @@ export abstract class EnemyBase implements EntityWithStatus {
       type: this.getEnemyType()
     });
 
+    if (this.eliteBadge) {
+      this.eliteBadge.destroy();
+      this.eliteBadge = null;
+    }
+    if (this.eliteAura) {
+      this.eliteAura.destroy();
+      this.eliteAura = null;
+    }
+
     // Death fade & destroy
     this.scene.tweens.add({
       targets: [this.sprite, this.shadow],
@@ -178,6 +211,7 @@ export abstract class EnemyBase implements EntityWithStatus {
 
     const hasFreeze = this.statusEffects.has('freeze');
     const hasBurn = this.statusEffects.has('burn');
+    const hasPoison = this.statusEffects.has('poison');
 
     // Flash recovery or status visual tint
     const wasFlashing = this.hitFlashTimer > 0;
@@ -190,6 +224,9 @@ export abstract class EnemyBase implements EntityWithStatus {
         this.hasElementalTint = true;
       } else if (hasBurn) {
         this.sprite.setTint(Math.floor(this.bobTimer * 2) % 2 === 0 ? 0xfb923c : 0xffffff);
+        this.hasElementalTint = true;
+      } else if (hasPoison) {
+        this.sprite.setTint(0x4ade80); // Emerald green
         this.hasElementalTint = true;
       } else if (wasFlashing || this.hasElementalTint) {
         this.sprite.clearTint();
@@ -223,7 +260,8 @@ export abstract class EnemyBase implements EntityWithStatus {
 
     // Facing direction & subtle Soul Knight breathing squash-stretch (slower when frozen)
     this.bobTimer += deltaSec * (hasFreeze ? 2.4 : 5.2);
-    const isBoss = this.getEnemyType() === 'boss_ignis' || this.getEnemyType() === 'boss_frost';
+    const enemyType = this.getEnemyType();
+    const isBoss = enemyType === 'boss_ignis' || enemyType === 'boss_frost' || enemyType === 'boss_molten';
     const baseScale = this.isElite ? 1.38 : isBoss ? 1.2 : 1.0;
     const breath = Math.sin(this.bobTimer) * 0.045;
     this.sprite.setScale(baseScale * (1 - breath * 0.6), baseScale * (1 + breath));
@@ -234,6 +272,19 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.eliteAura.setPosition(this.sprite.x, this.sprite.y + 4);
       this.eliteAura.setScale(1 + auraPulse * 0.08);
       this.eliteAura.setAlpha(0.75 + auraPulse * 0.25);
+    }
+    if (this.eliteBadge) {
+      this.eliteBadge.setPosition(this.sprite.x, this.sprite.y - 24);
+    }
+    if (this.eliteAffix?.id === 'regen') {
+      this.eliteRegenTimer += deltaSec;
+      if (this.eliteRegenTimer >= 2.5) {
+        this.eliteRegenTimer -= 2.5;
+        if (this.hp < this.maxHp) {
+          const healAmt = Math.max(1, Math.round(this.maxHp * 0.04));
+          this.hp = Math.min(this.maxHp, this.hp + healAmt);
+        }
+      }
     }
   }
 
@@ -281,7 +332,8 @@ export abstract class EnemyBase implements EntityWithStatus {
       this.sprite.y = Phaser.Math.Clamp(this.sprite.y, roomBounds.minY, roomBounds.maxY);
     }
 
-    const boxSize = this.getEnemyType() === 'boss_ignis' || this.getEnemyType() === 'boss_frost' ? 36 : 18;
+    const enemyType = this.getEnemyType();
+    const boxSize = enemyType === 'boss_ignis' || enemyType === 'boss_frost' || enemyType === 'boss_molten' ? 36 : 18;
     if (!this.checkWallCollision(this.sprite.x, this.sprite.y, boxSize, boxSize, walls)) {
       return;
     }
@@ -334,6 +386,10 @@ export abstract class EnemyBase implements EntityWithStatus {
     if (this.eliteAura) {
       this.eliteAura.destroy();
       this.eliteAura = null;
+    }
+    if (this.eliteBadge) {
+      this.eliteBadge.destroy();
+      this.eliteBadge = null;
     }
   }
 }

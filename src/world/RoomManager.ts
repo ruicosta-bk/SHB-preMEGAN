@@ -11,11 +11,13 @@ import { EnemySummoner } from '../enemies/EnemySummoner';
 import { EnemyTurret } from '../enemies/EnemyTurret';
 import { BossIgnis } from '../enemies/BossIgnis';
 import { BossFrost } from '../enemies/BossFrost';
+import { BossMolten } from '../enemies/BossMolten';
 import { DifficultyMode, getFloorEnemyScale } from '../data/difficulty';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { InteractiveProps } from './InteractiveProps';
-import { WeaponData } from '../types/weapon';
+import { WeaponCoreData, WeaponData } from '../types/weapon';
 import { WEAPONS } from '../data/weapons';
+import { pickRandomWeaponCore } from '../data/weaponCores';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 
@@ -27,7 +29,21 @@ export interface RectCollider {
 }
 
 export interface PickupItem {
-  type: 'weapon' | 'heart' | 'energy' | 'chest' | 'altar' | 'coin' | 'shop_item' | 'statue' | 'portal' | 'vending' | 'forge';
+  type:
+    | 'weapon'
+    | 'heart'
+    | 'energy'
+    | 'chest'
+    | 'boss_chest'
+    | 'altar'
+    | 'coin'
+    | 'shop_item'
+    | 'statue'
+    | 'portal'
+    | 'vending'
+    | 'forge'
+    | 'core_anvil'
+    | 'weapon_core';
   sprite: Phaser.GameObjects.Sprite;
   halo?: Phaser.GameObjects.Sprite;
   data?: any;
@@ -467,13 +483,18 @@ export class RoomManager {
         (sp.type === 'boss_ignis' && this.floorMeta.biomeId === 'frost_cavern' && this.floorMeta.isBossFloor)
       ) {
         enemy = new BossFrost(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
+      } else if (
+        sp.type === 'boss_molten' ||
+        (sp.type === 'boss_ignis' && this.floorMeta.biomeId === 'molten_core' && this.floorMeta.isBossFloor)
+      ) {
+        enemy = new BossMolten(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
       } else if (sp.type === 'boss_ignis') {
         enemy = new BossIgnis(this.scene, worldPosX, worldPosY, this.floorMeta.stage, this.floorMeta.bossTitleVi);
       }
 
       if (enemy) {
         enemy.applyDifficultyScaling(scale.hpMult, scale.speedMult, scale.attackRateScale, scale.bonusDamage);
-        const isBossEnemy = sp.type === 'boss_ignis' || sp.type === 'boss_frost';
+        const isBossEnemy = sp.type === 'boss_ignis' || sp.type === 'boss_frost' || sp.type === 'boss_molten';
         const rollExtraElite =
           !sp.isElite &&
           !isBossEnemy &&
@@ -581,13 +602,42 @@ export class RoomManager {
     for (let i = this.activeEnemies.length - 1; i >= 0; i--) {
       const enemy = this.activeEnemies[i];
       if (enemy.isDead) {
+        if (enemy.isVolatileElite()) {
+          const floorScale = getFloorEnemyScale(this.floorMeta.floorNumber, this.difficultyMode);
+          const burstDamage = 1 + floorScale.bonusDamage;
+          for (let k = 0; k < 6; k++) {
+            const angle = (Math.PI * 2 * k) / 6;
+            pool.spawn({
+              x: enemy.sprite.x,
+              y: enemy.sprite.y,
+              angleRad: angle,
+              speed: 175,
+              damage: burstDamage,
+              isPlayer: false,
+              texture: 'bullet_enemy',
+              range: 260,
+              tint: 0xf97316
+            });
+          }
+          if (this.scene.add?.circle && this.scene.tweens?.add) {
+            const flash = this.scene.add.circle(enemy.sprite.x, enemy.sprite.y, 18, 0xf97316, 0.55).setDepth(16);
+            this.scene.tweens.add({
+              targets: flash,
+              scaleX: 2.0,
+              scaleY: 2.0,
+              alpha: 0,
+              duration: 240,
+              onComplete: () => flash.destroy()
+            });
+          }
+        }
         this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y, enemy.isElite);
         this.activeEnemies.splice(i, 1);
         continue;
       }
       enemy.update(deltaSec, playerX, playerY, pool, allBlockers, roomBounds);
 
-      if ((enemy instanceof BossIgnis || enemy instanceof BossFrost || enemy instanceof EnemySummoner) && this.activeEnemies.length < 8) {
+      if ((enemy instanceof BossIgnis || enemy instanceof BossFrost || enemy instanceof BossMolten || enemy instanceof EnemySummoner) && this.activeEnemies.length < 8) {
         const summons = enemy.consumeSummonRequest();
         if (summons && summons.length > 0) {
           const normSpawns = summons.map(s => ({
@@ -700,9 +750,10 @@ export class RoomManager {
       `${picked.nameVi} [28 Vàng]`
     );
 
-    this.spawnPickup('altar', centerX, centerY + 65);
-    this.spawnPickup('forge', centerX - 105, centerY + 65, { cost: 18 }, 18, 'Lò Rèn Cường Hóa (+25% ST Vũ Khí) [18 Vàng]');
-    this.spawnPickup('vending', centerX + 105, centerY + 65, { cost: 12 }, 12, 'Máy Bán Nước Buff Vĩnh Viễn [12 Vàng]');
+    this.spawnPickup('forge', centerX - 115, centerY + 62, { cost: 18 }, 18, 'Lò Rèn Cường Hóa (+25% ST Vũ Khí) [18 Vàng]');
+    this.spawnPickup('altar', centerX - 38, centerY + 62);
+    this.spawnPickup('core_anvil', centerX + 38, centerY + 62, { cost: 15 }, 15, 'Bàn Gắn Lõi Nguyên Tố [15 Vàng]');
+    this.spawnPickup('vending', centerX + 115, centerY + 62, { cost: 12 }, 12, 'Máy Bán Nước Buff Vĩnh Viễn [12 Vàng]');
   }
 
   public spawnRoomRewards(room: RoomState): void {
@@ -716,13 +767,15 @@ export class RoomManager {
       this.spawnPickup('chest', centerX - 35, centerY);
       this.spawnPickup('statue', centerX + 45, centerY, { cost: 12 }, 12, 'Tượng Thần Cổ Xưa [12 Vàng]');
       this.spawnPickup('vending', centerX, centerY - 56, { cost: 12 }, 12, 'Máy Bán Nước Buff Vĩnh Viễn [12 Vàng]');
+      this.spawnPickup('weapon_core', centerX, centerY + 56, pickRandomWeaponCore());
       this.spawnPickup('coin', centerX - 35, centerY + 35, 3);
       this.spawnPickup('heart', centerX - 80, centerY, 3);
       this.spawnPickup('energy', centerX + 90, centerY, 60);
     } else if (room.type === 'rest') {
       this.spawnRestRoomMerchant(room);
     } else if (room.type === 'boss') {
-      this.spawnPickup('portal', centerX, centerY);
+      this.spawnPickup('boss_chest', centerX - 48, centerY);
+      this.spawnPickup('portal', centerX + 36, centerY);
     } else if (room.index === 2 || room.index === 5) {
       this.spawnPickup('altar', centerX, centerY);
     } else if (room.type === 'combat') {
@@ -822,10 +875,13 @@ export class RoomManager {
     if (type === 'heart') texture = 'pickup_heart';
     else if (type === 'coin') texture = 'pickup_coin';
     else if (type === 'chest') texture = 'chest_closed';
+    else if (type === 'boss_chest') texture = 'chest_boss';
     else if (type === 'altar') texture = 'upgrade_altar';
     else if (type === 'statue') texture = 'statue_alchemist';
     else if (type === 'vending') texture = 'vending_machine';
     else if (type === 'forge') texture = 'anvil_merge';
+    else if (type === 'core_anvil') texture = 'core_anvil';
+    else if (type === 'weapon_core') texture = 'weapon_core';
     else if (type === 'portal') texture = 'portal_1';
     else if (type === 'weapon') texture = (data as WeaponData)?.iconTexture || 'icon_shotgun';
     else if (type === 'shop_item') {
@@ -851,13 +907,27 @@ export class RoomManager {
       );
     } else if (type === 'shop_item' && data?.subType === 'weapon' && (data?.weapon as WeaponData | undefined)?.tier === 2) {
       halo = this.createPulsingHalo(x, y + 2, 'glow_ring', 0xfacc15, 0.85, 1.05, 1.24, 0.45, 750);
+    } else if (type === 'boss_chest') {
+      halo = this.createPulsingHalo(x, y, 'glow_soft', 0xf59e0b, 0.85, 1.3, 1.65, 0.45, 700);
     } else if (type === 'forge') {
       halo = this.createPulsingHalo(x, y, 'glow_soft', 0x38bdf8, 0.75, 1.2, 1.5, 0.4, 850);
+    } else if (type === 'core_anvil') {
+      halo = this.createPulsingHalo(x, y, 'glow_soft', 0xa855f7, 0.75, 1.2, 1.5, 0.4, 850);
+    } else if (type === 'weapon_core') {
+      const coreData = data as WeaponCoreData | undefined;
+      const coreTint = coreData?.colorNum ?? 0x22d3ee;
+      halo = this.createPulsingHalo(x, y + 2, 'glow_ring', coreTint, 0.85, 0.95, 1.18, 0.45, 750);
     } else if (type === 'portal') {
       halo = this.createPulsingHalo(x, y, 'glow_soft', 0xa855f7, 0.85, 1.4, 1.8, 0.45, 600);
     }
 
     const spr = this.scene.add.sprite(x, y, texture).setDepth(6);
+    if (type === 'weapon_core') {
+      const coreData = data as WeaponCoreData | undefined;
+      if (coreData?.colorNum !== undefined) {
+        spr.setTint(coreData.colorNum);
+      }
+    }
 
     if (halo) {
       const boundHalo = halo;
@@ -879,7 +949,15 @@ export class RoomManager {
         repeat: -1,
         ease: 'Sine.easeInOut'
       });
-    } else if (type !== 'chest' && type !== 'altar' && type !== 'statue' && type !== 'vending' && type !== 'forge') {
+    } else if (
+      type !== 'chest' &&
+      type !== 'boss_chest' &&
+      type !== 'altar' &&
+      type !== 'statue' &&
+      type !== 'vending' &&
+      type !== 'forge' &&
+      type !== 'core_anvil'
+    ) {
       this.scene.tweens.add({
         targets: spr,
         y: y - 5,

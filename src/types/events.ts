@@ -1,4 +1,4 @@
-import { WeaponData } from './weapon';
+import { WeaponCoreId, WeaponData } from './weapon';
 import { UpgradeData } from './upgrade';
 import { RoomState } from './room';
 import { HeroId, SkillVariant } from '../data/heroes';
@@ -10,7 +10,13 @@ export interface GameEvents {
   'player:stats-changed': { hp: number; maxHp: number; armor: number; maxArmor: number; energy: number; maxEnergy: number };
   'player:dash-cooldown': { progress: number; isReady: boolean };
   'player:skill-cooldown': { progress: number; isReady: boolean };
-  'player:weapon-swapped': { current: WeaponData; secondary: WeaponData | null; activeIndex: number };
+  'player:weapon-swapped': {
+    current: WeaponData;
+    secondary: WeaponData | null;
+    activeIndex: number;
+    currentCore?: WeaponCoreId | null;
+    secondaryCore?: WeaponCoreId | null;
+  };
   'player:damaged': { amount: number; armorAbsorbed: number; hpLoss: number; currentHp: number };
   'player:healed': { hpGain: number; armorGain: number };
   'player:energy-consumed': { currentEnergy: number };
@@ -24,7 +30,7 @@ export interface GameEvents {
   'combat:enemy-died': { enemyId: string; x: number; y: number; type: string };
   'combat:bullet-destroyed': { x: number; y: number };
   'combat:boss-stats': { currentHp: number; maxHp: number; phase: number; nameVi: string; isDead: boolean };
-  'combat:explosion': { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' };
+  'combat:explosion': { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' | 'poison' };
   'combat:lightning-arc': { fromX: number; fromY: number; toX: number; toY: number };
 
   // Room & Exploration

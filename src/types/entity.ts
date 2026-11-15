@@ -1,4 +1,4 @@
-export type ElementType = 'physical' | 'fire' | 'lightning' | 'frost';
+export type ElementType = 'physical' | 'fire' | 'lightning' | 'frost' | 'poison';
 
 export interface Stats {
   maxHp: number;
@@ -35,7 +35,7 @@ export interface DamageResult {
 }
 
 export interface StatusEffect {
-  type: 'burn' | 'freeze' | 'shock';
+  type: 'burn' | 'freeze' | 'shock' | 'poison';
   duration: number; // remaining duration in seconds
   tickTimer: number; // timer for periodic damage
   tickInterval: number;

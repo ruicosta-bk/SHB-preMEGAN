@@ -1178,14 +1178,23 @@ export class TextureGenerator {
       const ctx = this.createCanvas(tm, key, 56, 56);
       const o = '#090b10';
       const cape = isPhase2 ? '#7f1d1d' : '#451a03';
+      const capeDark = isPhase2 ? '#450a0a' : '#2c1001';
       const armor = isPhase2 ? '#b91c1c' : '#78350f';
       const armorHi = isPhase2 ? '#ef4444' : '#b45309';
       const gold = isPhase2 ? '#fef08a' : '#f59e0b';
+      const rim = isPhase2 ? '#ffffff' : '#fde68a';
       const core = isPhase2 ? '#ffffff' : '#fb923c';
+
+      // Subtle base pixel drop-shadow
+      px(ctx, 'rgba(0, 0, 0, 0.38)', 11, 51, 34, 3);
+      px(ctx, 'rgba(0, 0, 0, 0.24)', 14, 54, 28, 1);
 
       // Billowing dark-flame cape behind boss
       px(ctx, o, 7, 15, 42, 34);
       px(ctx, cape, 9, 17, 38, 30);
+      px(ctx, capeDark, 10, 38, 36, 9);
+      px(ctx, armorHi, 9, 17, 6, 1);
+      px(ctx, armorHi, 41, 17, 6, 1);
 
       // Towering Horned Obsidian & Gold Crown
       px(ctx, o, 14, 2, 6, 12);
@@ -1194,11 +1203,15 @@ export class TextureGenerator {
       px(ctx, gold, 15, 3, 4, 9);
       px(ctx, gold, 26, 1, 4, 10);
       px(ctx, gold, 37, 3, 4, 9);
+      px(ctx, rim, 15, 3, 3, 1);
+      px(ctx, rim, 26, 1, 3, 1);
+      px(ctx, rim, 37, 3, 3, 1);
 
       // Armored Skull / Helm (horned obsidian brow + fierce arched eyes, no flat black visor!)
       px(ctx, o, 15, 10, 26, 16);
       px(ctx, armor, 17, 12, 22, 12);
       px(ctx, armorHi, 19, 12, 18, 5);
+      px(ctx, rim, 19, 12, 18, 1);
       // Heavy iron nose bridge + recessed brow slits
       px(ctx, o, 19, 17, 7, 4);
       px(ctx, o, 30, 17, 7, 4);
@@ -1217,19 +1230,25 @@ export class TextureGenerator {
       // Heavy Spiked Shoulder Pauldrons
       px(ctx, o, 4, 18, 12, 14);
       px(ctx, armorHi, 6, 20, 8, 10);
+      px(ctx, rim, 6, 20, 7, 1);
       px(ctx, gold, 5, 17, 5, 4);
+      px(ctx, rim, 5, 17, 3, 1);
       px(ctx, o, 40, 18, 12, 14);
       px(ctx, armorHi, 42, 20, 8, 10);
+      px(ctx, rim, 43, 20, 7, 1);
       px(ctx, gold, 46, 17, 5, 4);
+      px(ctx, rim, 47, 17, 3, 1);
 
       // Chestplate & Molten Core Reactor
       px(ctx, o, 14, 25, 28, 22);
       px(ctx, armor, 16, 26, 24, 20);
       px(ctx, gold, 18, 27, 20, 3);
+      px(ctx, rim, 18, 27, 20, 1);
       px(ctx, o, 22, 31, 12, 11);
       px(ctx, isPhase2 ? '#ef4444' : '#ea580c', 23, 32, 10, 9);
       px(ctx, gold, 25, 34, 6, 5);
       px(ctx, core, 27, 35, 2, 3);
+      px(ctx, '#ffffff', 27, 35, 1, 1);
 
       // Grand Arcane Fire Staff held on right
       px(ctx, o, 48, 12, 5, 36);
@@ -1237,12 +1256,15 @@ export class TextureGenerator {
       px(ctx, o, 46, 8, 9, 11);
       px(ctx, isPhase2 ? '#ef4444' : '#f97316', 47, 9, 7, 9);
       px(ctx, gold, 49, 11, 3, 5);
+      px(ctx, '#ffffff', 49, 10, 2, 2);
 
       // Heavy Armored Boots
       px(ctx, o, 15, 47, 9, 7);
       px(ctx, gold, 17, 48, 5, 4);
+      px(ctx, rim, 17, 48, 4, 1);
       px(ctx, o, 32, 47, 9, 7);
       px(ctx, gold, 34, 48, 5, 4);
+      px(ctx, rim, 34, 48, 4, 1);
 
       this.refresh(tm, key);
     };
@@ -1254,16 +1276,25 @@ export class TextureGenerator {
       const ctx = this.createCanvas(tm, key, 56, 56);
       const o = '#090b10';
       const cape = isPhase2 ? '#312e81' : '#0c4a6e';
+      const capeDark = isPhase2 ? '#1e1b4b' : '#082f49';
       const armor = isPhase2 ? '#1e3a8a' : '#0369a1';
       const armorHi = isPhase2 ? '#6366f1' : '#0284c7';
       const ice = isPhase2 ? '#a78bfa' : '#bae6fd';
+      const rim = isPhase2 ? '#ede9fe' : '#f0f9ff';
       const rune = isPhase2 ? '#c084fc' : '#22d3ee';
       const core = isPhase2 ? '#ffffff' : '#67e8f9';
+
+      // Subtle base pixel drop-shadow
+      px(ctx, 'rgba(0, 0, 0, 0.38)', 11, 51, 34, 3);
+      px(ctx, 'rgba(0, 0, 0, 0.24)', 14, 54, 28, 1);
 
       // Billowing glacial / storm-indigo cloak behind boss
       px(ctx, o, 7, 15, 42, 34);
       px(ctx, cape, 9, 17, 38, 30);
-      px(ctx, armor, 11, 38, 34, 8);
+      px(ctx, capeDark, 10, 41, 36, 6);
+      px(ctx, armor, 11, 37, 34, 6);
+      px(ctx, ice, 9, 17, 6, 1);
+      px(ctx, ice, 41, 17, 6, 1);
 
       // Jagged Ice-Rune Crown
       px(ctx, o, 13, 2, 6, 11);
@@ -1272,12 +1303,16 @@ export class TextureGenerator {
       px(ctx, ice, 14, 3, 4, 8);
       px(ctx, ice, 26, 1, 4, 10);
       px(ctx, ice, 38, 3, 4, 8);
+      px(ctx, rim, 14, 3, 3, 1);
+      px(ctx, '#ffffff', 26, 1, 3, 1);
+      px(ctx, rim, 38, 3, 3, 1);
       px(ctx, rune, 27, 3, 2, 6);
 
       // Frost Guardian Helm & Glowing Cyan Eyes
       px(ctx, o, 15, 10, 26, 16);
       px(ctx, armor, 17, 12, 22, 12);
       px(ctx, armorHi, 19, 12, 18, 5);
+      px(ctx, rim, 19, 12, 18, 1);
       // Recessed eye slits split by crystalline nasal guard
       px(ctx, o, 19, 17, 7, 4);
       px(ctx, o, 30, 17, 7, 4);
@@ -1295,19 +1330,25 @@ export class TextureGenerator {
       // Crystalline Ice Shoulder Pauldrons
       px(ctx, o, 4, 17, 12, 14);
       px(ctx, armorHi, 6, 19, 8, 10);
+      px(ctx, rim, 6, 19, 7, 1);
       px(ctx, ice, 5, 16, 5, 4);
+      px(ctx, '#ffffff', 5, 16, 3, 1);
       px(ctx, o, 40, 17, 12, 14);
       px(ctx, armorHi, 42, 19, 8, 10);
+      px(ctx, rim, 43, 19, 7, 1);
       px(ctx, ice, 46, 16, 5, 4);
+      px(ctx, '#ffffff', 47, 16, 3, 1);
 
       // Chestplate & Frost Rune Core
       px(ctx, o, 14, 25, 28, 22);
       px(ctx, armor, 16, 26, 24, 20);
       px(ctx, ice, 18, 27, 20, 3);
+      px(ctx, rim, 18, 27, 20, 1);
       px(ctx, o, 22, 31, 12, 11);
       px(ctx, isPhase2 ? '#4f46e5' : '#0284c7', 23, 32, 10, 9);
       px(ctx, rune, 25, 34, 6, 5);
       px(ctx, core, 27, 35, 2, 3);
+      px(ctx, '#ffffff', 27, 35, 1, 1);
 
       // Glacial Rune Scepter held on right
       px(ctx, o, 48, 11, 5, 37);
@@ -1316,18 +1357,144 @@ export class TextureGenerator {
       px(ctx, isPhase2 ? '#7c3aed' : '#0284c7', 47, 8, 7, 10);
       px(ctx, rune, 49, 10, 3, 6);
       px(ctx, core, 50, 11, 1, 3);
+      px(ctx, '#ffffff', 48, 8, 2, 1);
 
       // Heavy Frost Greaves
       px(ctx, o, 15, 47, 9, 7);
       px(ctx, ice, 17, 48, 5, 4);
+      px(ctx, rim, 17, 48, 4, 1);
       px(ctx, o, 32, 47, 9, 7);
       px(ctx, ice, 34, 48, 5, 4);
+      px(ctx, rim, 34, 48, 4, 1);
 
       this.refresh(tm, key);
     };
 
     drawFrostBoss('boss_frost_p1', false);
     drawFrostBoss('boss_frost_p2', true);
+
+    const drawMoltenBoss = (key: string, isPhase2: boolean) => {
+      const ctx = this.createCanvas(tm, key, 56, 56);
+      const o = '#090b10';
+      const obsidian = '#18181b';
+      const armor = isPhase2 ? '#292524' : '#27272a';
+      const armorHi = isPhase2 ? '#57534e' : '#52525b';
+      const rim = isPhase2 ? '#fde047' : '#d4d4d8';
+      const magma = isPhase2 ? '#ef4444' : '#ea580c';
+      const amber = isPhase2 ? '#fbbf24' : '#f59e0b';
+      const glow = isPhase2 ? '#fef08a' : '#fb923c';
+      const core = isPhase2 ? '#ffffff' : '#fef08a';
+
+      // Subtle base pixel drop-shadow
+      px(ctx, 'rgba(0, 0, 0, 0.42)', 10, 51, 36, 3);
+      px(ctx, 'rgba(0, 0, 0, 0.26)', 14, 54, 28, 1);
+
+      // Scorched obsidian cape with glowing magma hem
+      px(ctx, o, 7, 15, 42, 34);
+      px(ctx, obsidian, 9, 17, 38, 30);
+      px(ctx, magma, 10, 42, 36, 4);
+      px(ctx, amber, 12, 44, 32, 2);
+      px(ctx, rim, 9, 17, 5, 1);
+      px(ctx, rim, 42, 17, 5, 1);
+
+      // Obsidian Crown & Sweeping Magma Horns
+      px(ctx, o, 11, 2, 7, 12);
+      px(ctx, o, 24, 0, 8, 12);
+      px(ctx, o, 38, 2, 7, 12);
+      px(ctx, armor, 12, 3, 5, 9);
+      px(ctx, armor, 25, 1, 6, 10);
+      px(ctx, armor, 39, 3, 5, 9);
+      px(ctx, amber, 13, 4, 2, 6);
+      px(ctx, glow, 27, 2, 2, 8);
+      px(ctx, amber, 41, 4, 2, 6);
+      px(ctx, rim, 12, 3, 3, 1);
+      px(ctx, '#ffffff', 25, 1, 4, 1);
+      px(ctx, rim, 41, 3, 3, 1);
+
+      // Obsidian Horned Helm & Magma Eye Visor
+      px(ctx, o, 15, 10, 26, 16);
+      px(ctx, armor, 17, 12, 22, 12);
+      px(ctx, armorHi, 18, 12, 20, 4);
+      px(ctx, rim, 18, 12, 20, 1);
+      // Glowing amber brow rune
+      px(ctx, amber, 26, 13, 4, 3);
+      px(ctx, core, 27, 14, 2, 1);
+      // Recessed magma eyes
+      px(ctx, o, 19, 17, 7, 4);
+      px(ctx, o, 30, 17, 7, 4);
+      px(ctx, armorHi, 26, 16, 4, 6);
+      px(ctx, magma, 20, 18, 5, 2);
+      px(ctx, magma, 31, 18, 5, 2);
+      px(ctx, glow, 21, 18, 3, 2);
+      px(ctx, glow, 32, 18, 3, 2);
+      px(ctx, core, 22, 18, 1, 1);
+      px(ctx, core, 33, 18, 1, 1);
+      // Furnace grate jaw with glowing magma vents
+      px(ctx, o, 20, 22, 16, 3);
+      px(ctx, amber, 21, 22, 2, 2);
+      px(ctx, glow, 25, 22, 2, 2);
+      px(ctx, glow, 29, 22, 2, 2);
+      px(ctx, amber, 33, 22, 2, 2);
+
+      // Fiery Obsidian Shoulder Pauldrons
+      px(ctx, o, 3, 17, 13, 15);
+      px(ctx, armor, 5, 19, 9, 11);
+      px(ctx, magma, 6, 22, 7, 5);
+      px(ctx, amber, 7, 23, 5, 3);
+      px(ctx, glow, 4, 16, 6, 4);
+      px(ctx, rim, 4, 16, 4, 1);
+
+      px(ctx, o, 40, 17, 13, 15);
+      px(ctx, armor, 42, 19, 9, 11);
+      px(ctx, magma, 43, 22, 7, 5);
+      px(ctx, amber, 44, 23, 5, 3);
+      px(ctx, glow, 46, 16, 6, 4);
+      px(ctx, rim, 48, 16, 4, 1);
+
+      // Obsidian Chestplate with Glowing Magma/Amber Runes
+      px(ctx, o, 14, 25, 28, 22);
+      px(ctx, armor, 16, 26, 24, 20);
+      px(ctx, armorHi, 17, 26, 22, 3);
+      px(ctx, rim, 17, 26, 22, 1);
+      // Side magma runes
+      px(ctx, amber, 18, 31, 2, 7);
+      px(ctx, glow, 18, 33, 2, 3);
+      px(ctx, amber, 36, 31, 2, 7);
+      px(ctx, glow, 36, 33, 2, 3);
+      // Central magma core furnace
+      px(ctx, o, 22, 30, 12, 12);
+      px(ctx, magma, 23, 31, 10, 10);
+      px(ctx, amber, 25, 33, 6, 6);
+      px(ctx, core, 27, 34, 2, 4);
+      // Belt rune buckle
+      px(ctx, amber, 21, 43, 14, 2);
+
+      // Molten Obsidian Great-Hammer held on right
+      px(ctx, o, 48, 14, 5, 34);
+      px(ctx, armorHi, 49, 20, 3, 26);
+      px(ctx, o, 44, 6, 11, 12);
+      px(ctx, armor, 45, 7, 9, 10);
+      px(ctx, magma, 46, 9, 7, 6);
+      px(ctx, amber, 47, 10, 5, 4);
+      px(ctx, core, 48, 11, 3, 2);
+      px(ctx, rim, 45, 7, 9, 1);
+
+      // Obsidian Greaves with Amber Knee Runes
+      px(ctx, o, 15, 47, 9, 7);
+      px(ctx, armorHi, 16, 48, 7, 5);
+      px(ctx, amber, 18, 49, 3, 2);
+      px(ctx, rim, 16, 48, 6, 1);
+
+      px(ctx, o, 32, 47, 9, 7);
+      px(ctx, armorHi, 33, 48, 7, 5);
+      px(ctx, amber, 35, 49, 3, 2);
+      px(ctx, rim, 33, 48, 6, 1);
+
+      this.refresh(tm, key);
+    };
+
+    drawMoltenBoss('boss_molten_p1', false);
+    drawMoltenBoss('boss_molten_p2', true);
   }
 
   private static createProjectiles(tm: Phaser.Textures.TextureManager): void {
@@ -1581,6 +1748,65 @@ export class TextureGenerator {
     ctx.fillRect(15, 4, 2, 2);
     this.refresh(tm, 'bullet_rocket');
 
+    // Boss Weapon: Boomerang Blade Projectile (20x20 glowing cyan crescent blade)
+    ctx = this.createCanvas(tm, 'bullet_boomerang', 20, 20);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.arc(10, 10, 9, -Math.PI * 0.72, Math.PI * 0.72);
+    ctx.arc(6, 10, 5.5, Math.PI * 0.65, -Math.PI * 0.65, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#0891b2';
+    ctx.beginPath();
+    ctx.arc(10, 10, 7.8, -Math.PI * 0.68, Math.PI * 0.68);
+    ctx.arc(7, 10, 5.8, Math.PI * 0.6, -Math.PI * 0.6, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#22d3ee';
+    ctx.beginPath();
+    ctx.arc(10.5, 10, 6.8, -Math.PI * 0.6, Math.PI * 0.6);
+    ctx.arc(8, 10, 5.6, Math.PI * 0.52, -Math.PI * 0.52, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#cffafe';
+    ctx.fillRect(15, 7, 2, 6);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(16, 8, 1, 4);
+    ctx.fillRect(12, 4, 2, 2);
+    ctx.fillRect(12, 14, 2, 2);
+    this.refresh(tm, 'bullet_boomerang');
+
+    // Boss Weapon: Glacial Cannon Orb (18x18 icy faceted crystal orb)
+    ctx = this.createCanvas(tm, 'bullet_glacial_orb', 18, 18);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.moveTo(9, 0); ctx.lineTo(14, 4); ctx.lineTo(18, 9); ctx.lineTo(14, 14);
+    ctx.lineTo(9, 18); ctx.lineTo(4, 14); ctx.lineTo(0, 9); ctx.lineTo(4, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#0369a1';
+    ctx.beginPath();
+    ctx.moveTo(9, 1.5); ctx.lineTo(13, 5); ctx.lineTo(16.5, 9); ctx.lineTo(13, 13);
+    ctx.lineTo(9, 16.5); ctx.lineTo(5, 13); ctx.lineTo(1.5, 9); ctx.lineTo(5, 5);
+    ctx.closePath();
+    ctx.fill();
+    // Upper-left bright crystal facet
+    ctx.fillStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.moveTo(9, 2); ctx.lineTo(13, 5); ctx.lineTo(9, 9); ctx.lineTo(2.5, 9); ctx.lineTo(5, 5);
+    ctx.closePath();
+    ctx.fill();
+    // Inner luminous core facet
+    ctx.fillStyle = '#bae6fd';
+    ctx.beginPath();
+    ctx.moveTo(9, 4); ctx.lineTo(13, 9); ctx.lineTo(9, 14); ctx.lineTo(5, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(7, 7, 3, 3);
+    ctx.fillRect(5, 5, 2, 2);
+    this.refresh(tm, 'bullet_glacial_orb');
+
     // Slash Arc
     ctx = this.createCanvas(tm, 'slash_arc', 68, 68);
     ctx.strokeStyle = '#e0f2fe';
@@ -1726,6 +1952,46 @@ export class TextureGenerator {
       ctx.fillStyle = '#dc2626'; ctx.fillRect(21, 3, 2, 8); // barrel clamp
       ctx.fillStyle = '#fb923c'; ctx.fillRect(26, 4, 2, 6); // heated muzzle
     });
+
+    // Boss Weapon: Solar Laser (32x14): Golden-crimson solar prism cannon
+    drawGun('hand_solar_laser', 32, 14, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 3, 18, 8);
+      ctx.fillRect(17, 2, 14, 10);
+      ctx.fillStyle = '#7f1d1d'; ctx.fillRect(2, 4, 16, 6); // crimson chassis
+      ctx.fillStyle = '#d97706'; ctx.fillRect(4, 4, 12, 2); // gold upper rail
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(18, 3, 10, 8); // solar prism shroud
+      ctx.fillStyle = '#fef08a'; ctx.fillRect(10, 6, 18, 2); // solar core channel
+      ctx.fillStyle = '#f97316'; ctx.fillRect(21, 5, 6, 4); // solar lens chamber
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(28, 5, 2, 4); // focusing emitter tip
+    });
+
+    // Boss Weapon: Boomerang Blade (26x14): Glowing cyan crescent throwing blade
+    drawGun('hand_boomerang_blade', 26, 14, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 5, 9, 4);
+      ctx.fillRect(8, 1, 16, 12);
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(2, 6, 7, 2); // obsidian hilt
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(8, 5, 2, 4); // gold collar
+      ctx.fillStyle = '#0891b2'; ctx.fillRect(10, 2, 13, 10); // crescent body
+      ctx.fillStyle = '#22d3ee'; ctx.fillRect(12, 3, 10, 8); // electric cyan edge
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(10, 5, 7, 4); // inner crescent cutout
+      ctx.fillStyle = '#ecfeff'; ctx.fillRect(20, 4, 2, 6); // razor gleam
+    });
+
+    // Boss Weapon: Glacial Cannon (32x14): Heavy frost-crystal cannon
+    drawGun('hand_glacial_cannon', 32, 14, ctx => {
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(1, 3, 14, 9);
+      ctx.fillRect(13, 2, 18, 10);
+      ctx.fillStyle = '#1e3a8a'; ctx.fillRect(2, 4, 12, 7); // sapphire receiver
+      ctx.fillStyle = '#0284c7'; ctx.fillRect(14, 3, 15, 8); // frost barrel
+      ctx.fillStyle = '#38bdf8'; ctx.fillRect(15, 3, 13, 2); // upper ice fin
+      ctx.fillStyle = '#bae6fd'; ctx.fillRect(8, 6, 12, 3); // cryo core window
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(12, 7, 5, 1);
+      ctx.fillStyle = '#e0f2fe'; ctx.fillRect(27, 4, 3, 6); // frosted muzzle prongs
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(29, 6, 1, 2);
+    });
   }
 
   private static createPickupsAndProps(tm: Phaser.Textures.TextureManager): void {
@@ -1771,6 +2037,86 @@ export class TextureGenerator {
     ctx.fillStyle = '#d97706'; ctx.fillRect(2, 2, 20, 5);
     ctx.fillStyle = '#fef08a'; ctx.fillRect(6, 9, 12, 4);
     this.refresh(tm, 'chest_open');
+
+    // Boss Chest (24x20 ornate golden-red boss chest, distinct from standard chest_closed)
+    ctx = this.createCanvas(tm, 'chest_boss', 24, 20);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.38)'; ctx.fillRect(1, 18, 22, 2);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(8, 0, 8, 3);
+    ctx.fillRect(1, 2, 22, 17);
+    ctx.fillStyle = '#7f1d1d'; ctx.fillRect(2, 7, 20, 11); // royal crimson base
+    ctx.fillStyle = '#b91c1c'; ctx.fillRect(2, 3, 20, 5); // crimson lid
+    ctx.fillStyle = '#d97706';
+    ctx.fillRect(2, 3, 3, 15); ctx.fillRect(19, 3, 3, 15); // ornate side gold bands
+    ctx.fillRect(2, 7, 20, 2); // gold lid trim
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(9, 1, 6, 2); // crown crest
+    ctx.fillRect(9, 8, 6, 6); // central gold lock plate
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(10, 1, 4, 1); // crown rim highlight
+    ctx.fillRect(3, 3, 18, 1); // lid top rim highlight
+    ctx.fillStyle = '#ef4444'; ctx.fillRect(10, 9, 4, 4); // ruby lock gem
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(11, 10, 1, 1);
+    this.refresh(tm, 'chest_boss');
+
+    // Core Anvil (32x32 arcane obsidian anvil with floating cyan/amber core crystal)
+    ctx = this.createCanvas(tm, 'core_anvil', 32, 32);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)'; ctx.fillRect(4, 28, 24, 3);
+    // Floating cyan/amber core crystal
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.moveTo(16, 1); ctx.lineTo(22, 6); ctx.lineTo(16, 11); ctx.lineTo(10, 6);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#22d3ee';
+    ctx.beginPath();
+    ctx.moveTo(16, 2); ctx.lineTo(16, 10); ctx.lineTo(11, 6);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.moveTo(16, 2); ctx.lineTo(21, 6); ctx.lineTo(16, 10);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(15, 5, 2, 2);
+    ctx.fillStyle = '#67e8f9'; ctx.fillRect(8, 3, 1, 1);
+    ctx.fillStyle = '#fef08a'; ctx.fillRect(23, 3, 1, 1);
+    // Arcane obsidian anvil body
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(2, 13, 28, 6); // anvil horn + table
+    ctx.fillRect(8, 18, 16, 7); // waist
+    ctx.fillRect(5, 24, 22, 6); // base plinth
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(3, 14, 26, 4);
+    ctx.fillRect(9, 18, 14, 6);
+    ctx.fillStyle = '#18181b';
+    ctx.fillRect(6, 25, 20, 4);
+    ctx.fillStyle = '#a1a1aa';
+    ctx.fillRect(5, 14, 22, 1); // crisp metallic striking-face rim
+    ctx.fillStyle = '#22d3ee'; ctx.fillRect(11, 20, 3, 2); // cyan rune
+    ctx.fillStyle = '#f59e0b'; ctx.fillRect(18, 20, 3, 2); // amber rune
+    ctx.fillStyle = '#52525b'; ctx.fillRect(7, 25, 18, 1); // plinth bevel
+    this.refresh(tm, 'core_anvil');
+
+    // Weapon Core Pickup (16x16 faceted prismatic elemental core gem)
+    ctx = this.createCanvas(tm, 'weapon_core', 16, 16);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.moveTo(8, 0); ctx.lineTo(14, 4); ctx.lineTo(14, 12);
+    ctx.lineTo(8, 16); ctx.lineTo(2, 12); ctx.lineTo(2, 4);
+    ctx.closePath(); ctx.fill();
+    // 4 prismatic elemental facets
+    ctx.fillStyle = '#22d3ee'; // top-left cyan
+    ctx.beginPath(); ctx.moveTo(8, 1.5); ctx.lineTo(8, 8); ctx.lineTo(3, 8); ctx.lineTo(3, 4.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f59e0b'; // top-right amber
+    ctx.beginPath(); ctx.moveTo(8, 1.5); ctx.lineTo(13, 4.5); ctx.lineTo(13, 8); ctx.lineTo(8, 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#34d399'; // bottom-left emerald
+    ctx.beginPath(); ctx.moveTo(3, 8); ctx.lineTo(8, 8); ctx.lineTo(8, 14.5); ctx.lineTo(3, 11.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e879f9'; // bottom-right magenta
+    ctx.beginPath(); ctx.moveTo(8, 8); ctx.lineTo(13, 8); ctx.lineTo(13, 11.5); ctx.lineTo(8, 14.5); ctx.closePath(); ctx.fill();
+    // Inner white crystal core & rim glints
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(8, 5); ctx.lineTo(11, 8); ctx.lineTo(8, 11); ctx.lineTo(5, 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e0f2fe'; ctx.fillRect(5, 3, 2, 2);
+    ctx.fillStyle = '#fef08a'; ctx.fillRect(10, 4, 1, 2);
+    this.refresh(tm, 'weapon_core');
 
     // 4. Upgrade Altar
     ctx = this.createCanvas(tm, 'upgrade_altar', 32, 32);
@@ -2062,6 +2408,38 @@ export class TextureGenerator {
       ctx.fillRect(16, 19, 11, 2);
       ctx.fillStyle = '#fef08a';
       ctx.fillRect(8, 14, 5, 4);
+    });
+
+    // Boss Weapon Icons (32x32)
+    drawSimpleIcon('icon_solar_laser', '#450a0a', '#f59e0b', ctx => {
+      ctx.fillStyle = '#b91c1c';
+      ctx.fillRect(4, 12, 14, 8);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(17, 10, 10, 12);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(8, 14, 18, 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(25, 14, 3, 4);
+    });
+    drawSimpleIcon('icon_boomerang_blade', '#082f49', '#22d3ee', ctx => {
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0891b2';
+      ctx.beginPath(); ctx.arc(13, 16, 10, -Math.PI * 0.45, Math.PI * 0.45); ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#cffafe';
+      ctx.beginPath(); ctx.arc(14, 16, 10, -Math.PI * 0.4, Math.PI * 0.4); ctx.stroke();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(7, 14, 5, 4);
+    });
+    drawSimpleIcon('icon_glacial_cannon', '#0c4a6e', '#38bdf8', ctx => {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(4, 12, 11, 9);
+      ctx.fillStyle = '#0284c7';
+      ctx.fillRect(14, 10, 13, 12);
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillRect(10, 14, 12, 4);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(24, 12, 3, 8);
     });
 
     // Upgrades icons

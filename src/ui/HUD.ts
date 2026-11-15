@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { events } from '../core/EventBus';
-import { WeaponData } from '../types/weapon';
+import { WeaponCoreId, WeaponData } from '../types/weapon';
 import { RoomState } from '../types/room';
 import { DifficultyMode } from '../data/difficulty';
+import { getWeaponCore } from '../data/weaponCores';
 
 export class HUD {
   private scene: Phaser.Scene;
@@ -113,10 +114,16 @@ export class HUD {
     this.curWeaponIcon = scene.add.sprite(1055, 660, 'icon_pistol').setScale(1.2);
     this.container.add(this.curWeaponIcon);
 
-    this.curWeaponText = scene.add.text(1090, 630, 'Súng Lục', { ...fontStyle, fontSize: '14px', color: '#38bdf8' });
+    this.curWeaponText = scene.add.text(1090, 626, 'Súng Lục', { ...fontStyle, fontSize: '14px', color: '#38bdf8' });
     this.container.add(this.curWeaponText);
 
-    this.curWeaponSubtext = scene.add.text(1090, 650, 'NL: 0 | ST: 3', { ...fontStyle, fontSize: '12px', color: '#94a3b8' });
+    this.curWeaponSubtext = scene.add.text(1090, 648, 'NL: 0 | ST: 3', {
+      ...fontStyle,
+      fontSize: '11px',
+      color: '#94a3b8',
+      wordWrap: { width: 120 },
+      lineSpacing: 2
+    });
     this.container.add(this.curWeaponSubtext);
 
     this.secWeaponIcon = scene.add.sprite(1225, 660, 'icon_shotgun').setScale(0.8).setAlpha(0.5);
@@ -169,10 +176,20 @@ export class HUD {
     this.bossBar = scene.add.graphics();
     this.bossContainer.add(this.bossBar);
 
-    this.bossNameText = scene.add.text(0, -18, 'Ignis Ignifer - Đại Pháp Sư Luyện Kim', { ...fontStyle, fontSize: '14px', color: '#f87171' }).setOrigin(0.5, 0);
+    this.bossNameText = scene.add.text(0, -21, 'Ignis Ignifer - Đại Pháp Sư Luyện Kim', {
+      ...fontStyle,
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#fde68a',
+      strokeThickness: 4
+    }).setOrigin(0.5, 0);
     this.bossContainer.add(this.bossNameText);
 
-    this.bossHpText = scene.add.text(0, 7, '150 / 150 (Giai đoạn 1)', { ...fontStyle, fontSize: '12px' }).setOrigin(0.5, 0);
+    this.bossHpText = scene.add.text(0, 7, '150 / 150 (Giai đoạn 1)', {
+      ...fontStyle,
+      fontSize: '12px',
+      fontStyle: 'bold'
+    }).setOrigin(0.5, 0);
     this.bossContainer.add(this.bossHpText);
 
     // Setup event listeners
@@ -200,8 +217,13 @@ export class HUD {
       this.updateSkill(1, true);
     });
 
-    events.on('player:weapon-swapped', (data: any) => {
-      this.updateWeapons(data.current, data.secondary);
+    events.on('player:weapon-swapped', (data: {
+      current: WeaponData;
+      secondary: WeaponData | null;
+      currentCore?: WeaponCoreId | null;
+      secondaryCore?: WeaponCoreId | null;
+    }) => {
+      this.updateWeapons(data.current, data.secondary, data.currentCore, data.secondaryCore);
     });
 
     events.on('player:coins-changed', (data: any) => {
@@ -287,14 +309,33 @@ export class HUD {
     this.skillText.setColor(isReady ? this.skillColorHex : '#94a3b8');
   }
 
-  public updateWeapons(cur: WeaponData, sec: WeaponData | null): void {
+  public updateWeapons(
+    cur: WeaponData,
+    sec: WeaponData | null,
+    curCoreId?: WeaponCoreId | null,
+    secCoreId?: WeaponCoreId | null
+  ): void {
     this.curWeaponIcon.setTexture(cur.iconTexture);
     this.curWeaponText.setText(cur.nameVi);
-    this.curWeaponSubtext.setText(`NL: ${cur.energyCost} | ST: ${cur.damage}`);
+
+    const curCore = getWeaponCore(curCoreId);
+    const baseStats = `NL: ${cur.energyCost} | ST: ${cur.damage}`;
+    if (curCore) {
+      this.curWeaponSubtext.setText(`${baseStats} • LÕI ${curCore.shortLabelVi}`);
+      this.curWeaponSubtext.setColor(curCore.colorHex);
+    } else {
+      this.curWeaponSubtext.setText(baseStats);
+      this.curWeaponSubtext.setColor('#94a3b8');
+    }
 
     if (sec) {
+      const secCore = getWeaponCore(secCoreId);
       this.secWeaponIcon.setTexture(sec.iconTexture).setVisible(true);
-      this.secWeaponText.setText('[Q] Đổi').setColor('#94a3b8');
+      if (secCore) {
+        this.secWeaponText.setText(`[Q] • ${secCore.shortLabelVi}`).setColor(secCore.colorHex);
+      } else {
+        this.secWeaponText.setText('[Q] Đổi').setColor('#94a3b8');
+      }
     } else {
       this.secWeaponIcon.setVisible(false);
       this.secWeaponText.setText('Trống').setColor('#475569');
@@ -307,29 +348,43 @@ export class HUD {
       return;
     }
     this.bossContainer.setVisible(true);
-    this.bossNameText.setText(data.nameVi);
+    const isPhase2 = data.phase >= 2;
+    this.bossNameText.setText(isPhase2 ? `☠ ${data.nameVi} [CUỒNG NỘ]` : data.nameVi);
+    this.bossNameText.setColor(isPhase2 ? '#fbbf24' : '#fde68a');
     this.bossHpText.setText(`${Math.ceil(data.currentHp)} / ${data.maxHp} (Giai đoạn ${data.phase})`);
+    this.bossHpText.setColor(isPhase2 ? '#fef08a' : '#ffffff');
 
     const barW = 432;
     const barH = 24;
+    const pct = Math.max(0, Math.min(1, data.currentHp / data.maxHp));
+    const fillW = barW * pct;
+
     this.bossBar.clear();
-    this.bossBar.fillStyle(0x450a0a, 0.9);
+    this.bossBar.fillStyle(isPhase2 ? 0x450a0a : 0x291509, 0.92);
     this.bossBar.fillRect(-216, 4, barW, barH);
 
-    const pct = Math.max(0, Math.min(1, data.currentHp / data.maxHp));
-    this.bossBar.fillStyle(data.phase === 1 ? 0xd97706 : 0xef4444, 1.0);
-    this.bossBar.fillRect(-216, 4, barW * pct, barH);
+    if (fillW > 0) {
+      this.bossBar.fillStyle(isPhase2 ? 0xdc2626 : 0xd97706, 1.0);
+      this.bossBar.fillRect(-216, 4, fillW, barH);
+      this.bossBar.fillStyle(isPhase2 ? 0xf59e0b : 0xfbbf24, 0.45);
+      this.bossBar.fillRect(-216, 4, fillW, 5);
+    }
+
+    this.bossBar.lineStyle(1.5, isPhase2 ? 0xf59e0b : 0xb91c1c, 0.95);
+    this.bossBar.strokeRoundedRect(-220, 0, 440, 32, 6);
   }
 
   public renderMinimap(rooms: RoomState[], currentIdx: number): void {
     this.minimapGraphics.clear();
     if (!rooms || rooms.length === 0) return;
 
-    // Minimap panel is (1090, 16, 175, 125)
+    // Minimap panel is (1090, 16, 175, 125); keep grid strictly above roomTitleText (y: 122)
     const boxCenterX = 1090 + 175 / 2;
-    const boxCenterY = 16 + 125 / 2;
+    const boxCenterY = 70;
 
     const visibleRooms = rooms.filter(r => r.isVisited || r.index === 0 || r.type === 'boss');
+    if (visibleRooms.length === 0) return;
+
     let minGX = Infinity;
     let maxGX = -Infinity;
     let minGY = Infinity;
@@ -343,11 +398,11 @@ export class HUD {
 
     const spanX = Math.max(1, maxGX - minGX + 1);
     const spanY = Math.max(1, maxGY - minGY + 1);
-    const maxStepX = Math.floor(148 / spanX);
-    const maxStepY = Math.floor(100 / spanY);
-    const step = Math.max(16, Math.min(28, Math.min(maxStepX, maxStepY)));
-    const cellW = Math.floor(step * 0.68);
-    const cellH = Math.floor(step * 0.56);
+    const maxStepX = Math.floor(150 / spanX);
+    const maxStepY = Math.floor(90 / spanY);
+    const step = Math.max(12, Math.min(28, Math.min(maxStepX, maxStepY)));
+    const cellW = Math.max(10, Math.floor(step * 0.68));
+    const cellH = Math.max(8, Math.floor(step * 0.56));
 
     const gridWidthPx = (maxGX - minGX) * step + cellW;
     const gridHeightPx = (maxGY - minGY) * step + cellH;
@@ -376,29 +431,77 @@ export class HUD {
       }
     }
 
-    // Draw room nodes
+    // Draw room nodes and distinct markers
     for (const r of visibleRooms) {
       const { x: px, y: py } = posOf(r);
+      const cx = px + cellW / 2;
+      const cy = py + cellH / 2;
+      const isCurrent = r.index === currentIdx;
 
       let color = 0x475569;
-      if (r.index === currentIdx) {
-        color = 0x38bdf8; // Bright cyan for player
-      } else if (r.type === 'boss') {
-        color = 0xef4444; // Red for boss
+      if (r.type === 'boss') {
+        color = 0xef4444;
       } else if (r.type === 'treasure') {
-        color = 0xf59e0b; // Gold
+        color = 0xf59e0b;
       } else if (r.type === 'rest') {
-        color = 0xa855f7; // Purple shop/rest
+        color = 0xa855f7;
+      } else if (isCurrent) {
+        color = 0x0284c7;
       } else if (r.isCleared) {
-        color = 0x22c55e; // Green for cleared
+        color = 0x16a34a;
       }
 
-      this.minimapGraphics.fillStyle(color, r.isVisited ? 0.9 : 0.45);
+      const alpha = isCurrent ? 0.98 : r.isVisited ? 0.9 : r.type === 'boss' ? 0.65 : 0.45;
+      this.minimapGraphics.fillStyle(color, alpha);
       this.minimapGraphics.fillRoundedRect(px, py, cellW, cellH, 3);
 
-      if (r.index === currentIdx) {
+      // Distinct room type pips
+      if (r.type === 'boss') {
+        const dr = Math.max(2.6, Math.min(cellW, cellH) * 0.34);
+        this.minimapGraphics.fillStyle(0xfef08a, 1.0);
+        this.minimapGraphics.fillPoints([
+          { x: cx, y: cy - dr },
+          { x: cx + dr, y: cy },
+          { x: cx, y: cy + dr },
+          { x: cx - dr, y: cy }
+        ], true);
+        this.minimapGraphics.lineStyle(0.9, 0xffffff, 0.95);
+        this.minimapGraphics.strokePoints([
+          { x: cx, y: cy - dr },
+          { x: cx + dr, y: cy },
+          { x: cx, y: cy + dr },
+          { x: cx - dr, y: cy }
+        ], true, true);
+      } else if (r.type === 'treasure') {
+        const bw = Math.max(4, Math.floor(cellW * 0.44));
+        const bh = Math.max(3, Math.floor(cellH * 0.44));
+        this.minimapGraphics.fillStyle(0xfef08a, 1.0);
+        this.minimapGraphics.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+        this.minimapGraphics.lineStyle(1, 0x78350f, 0.95);
+        this.minimapGraphics.strokeRect(cx - bw / 2, cy - bh / 2, bw, bh);
+      } else if (r.type === 'rest') {
+        const arm = Math.max(2.5, Math.min(cellW, cellH) * 0.28);
+        this.minimapGraphics.lineStyle(1.8, 0xffffff, 0.98);
+        this.minimapGraphics.beginPath();
+        this.minimapGraphics.moveTo(cx - arm, cy);
+        this.minimapGraphics.lineTo(cx + arm, cy);
+        this.minimapGraphics.moveTo(cx, cy - arm);
+        this.minimapGraphics.lineTo(cx, cy + arm);
+        this.minimapGraphics.strokePath();
+      } else if (r.isCleared && !isCurrent) {
+        this.minimapGraphics.fillStyle(0x86efac, 0.95);
+        this.minimapGraphics.fillCircle(cx, cy, 1.8);
+      }
+
+      if (isCurrent) {
+        this.minimapGraphics.lineStyle(2, 0x22d3ee, 0.7);
+        this.minimapGraphics.strokeRoundedRect(px - 2, py - 2, cellW + 4, cellH + 4, 4);
         this.minimapGraphics.lineStyle(1.5, 0xffffff, 1.0);
-        this.minimapGraphics.strokeRoundedRect(px - 1, py - 1, cellW + 2, cellH + 2, 3);
+        this.minimapGraphics.strokeRoundedRect(px - 0.5, py - 0.5, cellW + 1, cellH + 1, 3);
+        this.minimapGraphics.fillStyle(0x22d3ee, 1.0);
+        this.minimapGraphics.fillCircle(cx, cy, 2.8);
+        this.minimapGraphics.fillStyle(0xffffff, 1.0);
+        this.minimapGraphics.fillCircle(cx, cy, 1.6);
       }
     }
   }

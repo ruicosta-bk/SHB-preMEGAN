@@ -2,12 +2,13 @@ import type Phaser from 'phaser';
 
 export const DEFAULT_EFFECTS_POOL_CAP = 96;
 
-export type StatusElement = 'fire' | 'frost' | 'lightning';
+export type StatusElement = 'fire' | 'frost' | 'lightning' | 'poison';
 
 export const STATUS_ELEMENT_COLORS: Record<StatusElement, number> = {
   fire: 0xf97316,
   frost: 0x38bdf8,
-  lightning: 0xfacc15
+  lightning: 0xfacc15,
+  poison: 0x22c55e
 };
 
 export interface EffectsPoolMetrics {
@@ -217,6 +218,89 @@ export class EffectsManager {
         startScale: 1.25,
         endScale: 0.2,
         depth: 18,
+        additive: true,
+        rotation: angle
+      });
+    }
+  }
+
+  public spawnRingBurst(x: number, y: number, color: number, count: number = 8): void {
+    this.spawn({
+      x,
+      y,
+      textureKey: 'glow_ring',
+      tint: color,
+      vx: 0,
+      vy: 0,
+      drag: 0,
+      lifetime: 0.3,
+      startAlpha: 0.9,
+      endAlpha: 0,
+      startScale: 0.3,
+      endScale: 1.6,
+      depth: 18,
+      additive: true
+    });
+
+    const total = Math.max(0, Math.floor(count));
+    for (let i = 0; i < total; i++) {
+      const angle = (Math.PI * 2 * i) / total;
+      const speed = 110 + (i % 2) * 35;
+      this.spawn({
+        x,
+        y,
+        textureKey: 'spark_pixel',
+        tint: color,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        drag: 3.8,
+        lifetime: 0.24,
+        startAlpha: 1,
+        endAlpha: 0,
+        startScale: 1.4,
+        endScale: 0.2,
+        depth: 18,
+        additive: true,
+        rotation: angle
+      });
+    }
+  }
+
+  public spawnCritFlare(x: number, y: number, color: number = 0xfacc15): void {
+    this.spawn({
+      x,
+      y,
+      textureKey: 'glow_ring',
+      tint: color,
+      vx: 0,
+      vy: 0,
+      drag: 0,
+      lifetime: 0.22,
+      startAlpha: 0.95,
+      endAlpha: 0,
+      startScale: 0.2,
+      endScale: 1.1,
+      depth: 19,
+      additive: true
+    });
+
+    for (let i = 0; i < 4; i++) {
+      const angle = (Math.PI * 0.5) * i;
+      const speed = 95;
+      this.spawn({
+        x,
+        y,
+        textureKey: 'spark_pixel',
+        tint: color,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        drag: 5,
+        lifetime: 0.18,
+        startAlpha: 1,
+        endAlpha: 0,
+        startScale: 1.5,
+        endScale: 0.2,
+        depth: 19,
         additive: true,
         rotation: angle
       });

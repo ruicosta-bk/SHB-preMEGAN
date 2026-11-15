@@ -735,6 +735,115 @@ export class AudioSystem {
     this.registerVoice(480);
   }
 
+  public playCoreAttach(): void {
+    if (!this.canPlayVoice() || !this.ctx || !this.masterGain) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    // Shimmering crystalline chime chord arpeggio (C6 - E6 - G6 - C7)
+    const notes = [1046.5, 1318.51, 1567.98, 2093.0];
+
+    notes.forEach((freq, idx) => {
+      const t = now + idx * 0.048;
+      const osc = ctx.createOscillator();
+      const shimmer = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+
+      shimmer.type = 'triangle';
+      shimmer.frequency.setValueAtTime(freq * 1.5, t);
+
+      gain.gain.setValueAtTime(0.01, t);
+      gain.gain.linearRampToValueAtTime(0.26, t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+
+      osc.connect(gain);
+      shimmer.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(t);
+      shimmer.start(t);
+      osc.stop(t + 0.35);
+      shimmer.stop(t + 0.35);
+    });
+
+    this.registerVoice(520);
+  }
+
+  public playBoomerang(): void {
+    if (!this.canPlayVoice() || !this.ctx || !this.masterGain) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // Spinning blade whoosh pulses
+    for (let i = 0; i < 3; i++) {
+      const t = now + i * 0.075;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, t);
+      osc.frequency.exponentialRampToValueAtTime(620, t + 0.032);
+      osc.frequency.exponentialRampToValueAtTime(210, t + 0.07);
+
+      gain.gain.setValueAtTime(0.02, t);
+      gain.gain.linearRampToValueAtTime(0.24, t + 0.028);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.072);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.075);
+    }
+
+    this.playNoise(0.22, 0.32, 1350, 'bandpass');
+    this.registerVoice(240);
+  }
+
+  public playMoltenRoar(): void {
+    if (!this.canPlayVoice() || !this.ctx || !this.masterGain) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.setValueAtTime(2.5, now);
+    filter.frequency.setValueAtTime(190, now);
+    filter.frequency.exponentialRampToValueAtTime(980, now + 0.16);
+    filter.frequency.exponentialRampToValueAtTime(220, now + 0.54);
+
+    const roarGain = ctx.createGain();
+    roarGain.gain.setValueAtTime(0.04, now);
+    roarGain.gain.linearRampToValueAtTime(0.62, now + 0.08);
+    roarGain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
+
+    filter.connect(roarGain);
+    roarGain.connect(this.masterGain);
+
+    // Sub rumble + detuned low brass oscillators
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'sawtooth';
+    subOsc.frequency.setValueAtTime(65, now);
+    subOsc.frequency.linearRampToValueAtTime(88, now + 0.14);
+    subOsc.frequency.exponentialRampToValueAtTime(42, now + 0.54);
+    subOsc.connect(filter);
+    subOsc.start(now);
+    subOsc.stop(now + 0.55);
+
+    const brassOsc = ctx.createOscillator();
+    brassOsc.type = 'sawtooth';
+    brassOsc.frequency.setValueAtTime(98, now);
+    brassOsc.frequency.linearRampToValueAtTime(132, now + 0.14);
+    brassOsc.frequency.exponentialRampToValueAtTime(64, now + 0.54);
+    brassOsc.connect(filter);
+    brassOsc.start(now);
+    brassOsc.stop(now + 0.55);
+
+    this.playNoise(0.45, 0.48, 320, 'lowpass');
+    this.registerVoice(560);
+  }
+
   private playNoise(duration: number, volume: number, filterFreq: number, filterType: BiquadFilterType): void {
     if (!this.ctx || !this.masterGain) return;
     const ctx = this.ctx;

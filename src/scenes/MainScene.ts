@@ -13,8 +13,11 @@ import { ProjectilePool } from '../combat/ProjectilePool';
 import { StatusManager } from '../combat/StatusManager';
 import { FloatingNumbers } from '../ui/FloatingNumbers';
 import { UIScene } from './UIScene';
-import { WeaponData } from '../types/weapon';
+import { WeaponCoreData, WeaponData } from '../types/weapon';
 import { WEAPONS } from '../data/weapons';
+import { WEAPON_CORE_IDS, pickRandomWeaponCore } from '../data/weaponCores';
+import { findMergeResult } from '../data/merges';
+import type { EnemyBase } from '../enemies/EnemyBase';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { getMetaBonuses, recordRunResult } from '../core/MetaProgression';
@@ -52,6 +55,10 @@ export class MainScene extends Phaser.Scene {
   private cameraTarget: Phaser.Math.Vector2 = new Phaser.Math.Vector2(0, 0);
   private camLookAheadX: number = 0;
   private camLookAheadY: number = 0;
+
+  // Hit-stop micro-pause state
+  private hitStopTimer: number = 0;
+  private lastHitStopAt: number = 0;
 
   constructor() {
     super({ key: 'MainScene' });
@@ -113,15 +120,18 @@ export class MainScene extends Phaser.Scene {
     events.on('combat:enemy-hit', (data: any) => {
       this.damageDealt += data.damage;
       this.floatingNumbers.showDamage(data.x, data.y, data.damage, data.isCrit);
+      if (data.isCrit) {
+        this.triggerHitStop(0.028);
+      }
       if (this.effects) {
         const element = data.element as string | undefined;
         const elemColor =
-          element === 'frost' || element === 'fire' || element === 'lightning'
+          element === 'frost' || element === 'fire' || element === 'lightning' || element === 'poison'
             ? STATUS_ELEMENT_COLORS[element]
             : 0xfef08a;
         this.effects.spawnHitSparks(data.x, data.y, elemColor, data.isCrit ? 8 : 5);
         if (
-          (element === 'fire' || element === 'frost' || element === 'lightning') &&
+          (element === 'fire' || element === 'frost' || element === 'lightning' || element === 'poison') &&
           (data.isCrit || Math.random() < 0.25)
         ) {
           this.effects.spawnStatusPop(data.x, data.y, element as StatusElement);
@@ -138,11 +148,12 @@ export class MainScene extends Phaser.Scene {
       if (this.player) {
         this.player.onEnemyKilled();
       }
-      const isBoss = data.type === 'boss_ignis' || data.type === 'boss_frost';
+      const isBoss = data.type === 'boss_ignis' || data.type === 'boss_frost' || data.type === 'boss_molten';
       if (this.effects) {
         this.effects.spawnDeathBurst(data.x, data.y, isBoss ? 0xf59e0b : 0xf87171);
       }
       if (isBoss) {
+        this.triggerHitStop(0.045, 0);
         audio.playRoomClear();
         this.cameras.main.shake(350, 0.02);
         if (this.roomManager) {
@@ -166,7 +177,7 @@ export class MainScene extends Phaser.Scene {
       arcDeg: number;
       damage: number;
       isCrit: boolean;
-      element?: 'physical' | 'fire' | 'lightning' | 'frost';
+      element?: 'physical' | 'fire' | 'lightning' | 'frost' | 'poison';
     }) => {
       if (!this.roomManager) return;
       const halfArcRad = Phaser.Math.DegToRad(data.arcDeg / 2);
@@ -189,6 +200,7 @@ export class MainScene extends Phaser.Scene {
               knockback: { x: dx / len, y: dy / len, force: 210 },
               isPlayerAttack: true
             });
+            this.applyExtraElementalEffects(enemy, data.element, data.damage);
           }
         }
       }
@@ -265,6 +277,7 @@ export class MainScene extends Phaser.Scene {
       y2: number;
       damage: number;
       isCrit: boolean;
+      element?: 'fire' | 'frost' | 'lightning' | 'poison';
     }) => {
       if (!this.roomManager) return;
       for (const enemy of this.roomManager.activeEnemies) {
@@ -274,8 +287,10 @@ export class MainScene extends Phaser.Scene {
           enemy.takeDamage({
             amount: data.damage,
             isCrit: data.isCrit,
+            element: data.element,
             isPlayerAttack: true
           });
+          this.applyExtraElementalEffects(enemy, data.element, data.damage);
         }
       }
       if (this.roomManager.interactiveProps) {
@@ -377,6 +392,40 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  private triggerHitStop(durationSec: number, minCooldownMs: number = 180): void {
+    const now = this.time?.now ?? 0;
+    if (now - this.lastHitStopAt < minCooldownMs) return;
+    const clamped = Math.min(0.045, Math.max(0, durationSec));
+    if (clamped > this.hitStopTimer) {
+      this.hitStopTimer = clamped;
+      this.lastHitStopAt = now;
+    }
+  }
+
+  private applyExtraElementalEffects(enemy: EnemyBase, element: string | undefined, baseDamage: number): void {
+    if (!this.roomManager || !element) return;
+    if (element === 'poison') {
+      StatusManager.applyStatus(enemy as any, 'poison', 3.0, 2, 0.5);
+    } else if (element === 'lightning') {
+      const chainTargets = StatusManager.findChainTargets(enemy, this.roomManager.activeEnemies, 130, 2);
+      if (chainTargets.length > 0) {
+        audio.playChainLightning();
+        const chainDamage = Math.max(1, Math.ceil(baseDamage * 0.55));
+        for (const ct of chainTargets) {
+          const targetEnemy = this.roomManager.activeEnemies.find(e => e.id === ct.id && !e.isDead);
+          if (!targetEnemy) continue;
+          this.drawLightningArc(enemy.sprite.x, enemy.sprite.y, targetEnemy.sprite.x, targetEnemy.sprite.y);
+          targetEnemy.takeDamage({
+            amount: chainDamage,
+            isCrit: false,
+            element: 'lightning',
+            isPlayerAttack: true
+          });
+        }
+      }
+    }
+  }
+
   private clearTurrets(): void {
     for (const turret of this.turrets) {
       turret.destroy();
@@ -388,6 +437,8 @@ export class MainScene extends Phaser.Scene {
     this.isGameRunning = false;
     this.isPaused = false;
     this.isTransitioningFloor = false;
+    this.hitStopTimer = 0;
+    this.lastHitStopAt = 0;
     this.nearestPickup = null;
     this.camLookAheadX = 0;
     this.camLookAheadY = 0;
@@ -593,7 +644,14 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Delta in seconds (clamped to prevent physics jumps after background tab freeze)
-    const deltaSec = Math.min(delta / 1000, 0.05);
+    const rawDeltaSec = Math.min(delta / 1000, 0.05);
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - rawDeltaSec);
+      this.effects?.update(rawDeltaSec);
+      return;
+    }
+
+    const deltaSec = rawDeltaSec;
     this.runTime += deltaSec;
 
     const pointer = this.input.activePointer;
@@ -729,6 +787,7 @@ export class MainScene extends Phaser.Scene {
             enemy.takeDamage({
               amount: p.damage,
               isCrit: p.isCrit,
+              element: p.element === 'vampire' ? undefined : p.element,
               knockback: {
                 x: dx / len,
                 y: dy / len,
@@ -741,8 +800,34 @@ export class MainScene extends Phaser.Scene {
               StatusManager.applyStatus(enemy as any, 'burn', 2.5, 2, 0.5);
             } else if (p.element === 'frost') {
               StatusManager.applyStatus(enemy as any, 'freeze', 1.6, 0, 1.0, 0.5);
+            } else if (p.element === 'poison') {
+              StatusManager.applyStatus(enemy as any, 'poison', 3.0, 2, 0.5);
             } else if (p.element === 'vampire') {
               this.player.onVampireBatHit();
+            }
+
+            if (p.isFrostNova) {
+              p.isFrostNova = false;
+              const shardDamage = Math.max(2, Math.round(p.damage * 0.45));
+              for (let k = 0; k < 6; k++) {
+                const ang = (Math.PI * 2 * k) / 6;
+                const shard = this.projectilePool.spawn({
+                  x: p.sprite.x,
+                  y: p.sprite.y,
+                  angleRad: ang,
+                  speed: 360,
+                  damage: shardDamage,
+                  isPlayer: true,
+                  isCrit: false,
+                  element: 'frost',
+                  texture: 'bullet_ice_shard',
+                  range: 140
+                });
+                if (shard) {
+                  shard.hitEntities.add(enemy);
+                }
+              }
+              this.effects?.spawnRingBurst(p.sprite.x, p.sprite.y, 0x38bdf8, 8);
             }
 
             // Soul Knight tactile feel: Crit screen shake & Chain Lightning shock (safe instance lookup!)
@@ -995,32 +1080,55 @@ export class MainScene extends Phaser.Scene {
     }
 
     if (this.nearestPickup) {
-      let prompt = '[E] Tương tác';
       if (this.nearestPickup.type === 'weapon') {
         const wData = this.nearestPickup.data as WeaponData;
         const mergeWith = this.player.getMergeMatchForWeapon(wData);
-        prompt = mergeWith
+        const prompt = mergeWith
           ? `[E] Nhặt: ${wData.nameVi} ★ (Ghép ${mergeWith.nameVi}!)`
           : `[E] Nhặt: ${wData.nameVi}`;
-      } else if (this.nearestPickup.type === 'chest') {
-        prompt = '[E] Mở Rương Báu Cổ';
-      } else if (this.nearestPickup.type === 'altar') {
-        prompt = '[E] Tiếp nhận Nâng Cấp Giả Kim';
-      } else if (this.nearestPickup.type === 'statue') {
-        prompt = `[E] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
-      } else if (this.nearestPickup.type === 'vending') {
-        prompt = `[E] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
-      } else if (this.nearestPickup.type === 'forge') {
-        const mergePreview = this.player.getMergePreview();
-        prompt = mergePreview
-          ? `[E] Hợp Nhất: ${mergePreview.first.nameVi} + ${mergePreview.second.nameVi} -> ${mergePreview.result.nameVi} (Miễn phí)`
-          : `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
-      } else if (this.nearestPickup.type === 'portal') {
-        prompt = this.currentFloor < TOTAL_FLOORS ? '[E] Bước Vào Tầng Tiếp Theo' : '[E] Hoàn Thành Hầm Ngục';
-      } else if (this.nearestPickup.type === 'shop_item') {
-        prompt = `[E] Mua: ${this.nearestPickup.label}`;
+        const mergeId = mergeWith ? findMergeResult(mergeWith.id, wData.id) : null;
+        const mergeNameVi = mergeId && WEAPONS[mergeId] ? WEAPONS[mergeId].nameVi : null;
+        this.floatingNumbers.hidePrompt();
+        this.floatingNumbers.showWeaponTooltip(
+          this.nearestPickup.sprite.x,
+          this.nearestPickup.sprite.y,
+          prompt,
+          wData,
+          this.player.getCurrentWeapon(),
+          mergeNameVi
+        );
+      } else {
+        let prompt = '[E] Tương tác';
+        if (this.nearestPickup.type === 'chest') {
+          prompt = '[E] Mở Rương Báu Cổ';
+        } else if (this.nearestPickup.type === 'boss_chest') {
+          prompt = '[E] Mở Rương Thủ Lĩnh';
+        } else if (this.nearestPickup.type === 'altar') {
+          prompt = '[E] Tiếp nhận Nâng Cấp Giả Kim';
+        } else if (this.nearestPickup.type === 'statue') {
+          prompt = `[E] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
+        } else if (this.nearestPickup.type === 'vending') {
+          prompt = `[E] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
+        } else if (this.nearestPickup.type === 'forge') {
+          const mergePreview = this.player.getMergePreview();
+          prompt = mergePreview
+            ? `[E] Hợp Nhất: ${mergePreview.first.nameVi} + ${mergePreview.second.nameVi} -> ${mergePreview.result.nameVi} (Miễn phí)`
+            : `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
+        } else if (this.nearestPickup.type === 'core_anvil') {
+          prompt = `[E] Gắn Lõi Nguyên Tố (${this.nearestPickup.price || 15} Vàng)`;
+        } else if (this.nearestPickup.type === 'weapon_core') {
+          const coreData = this.nearestPickup.data as WeaponCoreData | undefined;
+          prompt = coreData
+            ? `[E] Gắn ${coreData.nameVi} (+${coreData.bonusDamage} ST)`
+            : '[E] Nhặt Lõi Nguyên Tố';
+        } else if (this.nearestPickup.type === 'portal') {
+          prompt = this.currentFloor < TOTAL_FLOORS ? '[E] Bước Vào Tầng Tiếp Theo' : '[E] Hoàn Thành Hầm Ngục';
+        } else if (this.nearestPickup.type === 'shop_item') {
+          prompt = `[E] Mua: ${this.nearestPickup.label}`;
+        }
+        this.floatingNumbers.hideWeaponTooltip();
+        this.floatingNumbers.showPrompt(this.nearestPickup.sprite.x, this.nearestPickup.sprite.y, prompt);
       }
-      this.floatingNumbers.showPrompt(this.nearestPickup.sprite.x, this.nearestPickup.sprite.y, prompt);
     } else {
       this.floatingNumbers.hidePrompt();
     }
@@ -1039,6 +1147,26 @@ export class MainScene extends Phaser.Scene {
       if (returnedWeapon) {
         this.roomManager.spawnPickup('weapon', this.player.sprite.x, this.player.sprite.y, returnedWeapon);
       }
+    } else if (p.type === 'boss_chest') {
+      audio.playPickup();
+      p.sprite.setTexture('chest_open');
+
+      const tier2Weapons: WeaponData[] = [
+        WEAPONS.solar_laser,
+        WEAPONS.boomerang_blade,
+        WEAPONS.glacial_cannon,
+        WEAPONS.frost_sword,
+        WEAPONS.thunder_staff,
+        WEAPONS.inferno_gatling
+      ];
+      const selectedWeapon = Phaser.Utils.Array.GetRandom(tier2Weapons);
+      const px = p.sprite.x;
+      const py = p.sprite.y;
+
+      this.removePickup(p);
+      this.roomManager.spawnPickup('weapon', px - 16, py + 12, selectedWeapon);
+      this.roomManager.spawnPickup('weapon_core', px + 22, py + 12, pickRandomWeaponCore());
+      this.effects?.spawnRingBurst(px, py, 0xf59e0b, 12);
     } else if (p.type === 'chest') {
       audio.playPickup();
       p.sprite.setTexture('chest_open');
@@ -1053,9 +1181,48 @@ export class MainScene extends Phaser.Scene {
         WEAPONS.staff
       ];
       const selectedWeapon = Phaser.Utils.Array.GetRandom(highTierWeapons);
+      const px = p.sprite.x;
+      const py = p.sprite.y;
 
       this.removePickup(p);
-      this.roomManager.spawnPickup('weapon', p.sprite.x, p.sprite.y + 10, selectedWeapon);
+      this.roomManager.spawnPickup('weapon', px, py + 10, selectedWeapon);
+      if (Math.random() < 0.35) {
+        this.roomManager.spawnPickup('weapon_core', px + 26, py + 10, pickRandomWeaponCore());
+      }
+    } else if (p.type === 'weapon_core') {
+      const coreData = p.data as WeaponCoreData | undefined;
+      if (!coreData) {
+        this.removePickup(p);
+        return;
+      }
+      const { weapon, core } = this.player.attachCoreToCurrentWeapon(coreData.id);
+      this.floatingNumbers.showNotice(
+        p.sprite.x,
+        p.sprite.y - 24,
+        `Gắn ${core.nameVi} -> ${weapon.nameVi}!`,
+        core.colorHex
+      );
+      this.effects?.spawnRingBurst(p.sprite.x, p.sprite.y, core.colorNum, 10);
+      this.removePickup(p);
+    } else if (p.type === 'core_anvil') {
+      const cost = p.price || 15;
+      if (this.player.spendCoins(cost)) {
+        const currentCoreId = this.player.getWeaponCore();
+        const candidates = WEAPON_CORE_IDS.filter(id => id !== currentCoreId);
+        const pickedId = Phaser.Utils.Array.GetRandom(candidates.length > 0 ? candidates : WEAPON_CORE_IDS);
+        const { weapon, core } = this.player.attachCoreToCurrentWeapon(pickedId);
+        this.floatingNumbers.showNotice(
+          p.sprite.x,
+          p.sprite.y - 24,
+          `Gắn ${core.nameVi} -> ${weapon.nameVi}!`,
+          core.colorHex
+        );
+        this.effects?.spawnRingBurst(p.sprite.x, p.sprite.y, core.colorNum, 10);
+        this.removePickup(p);
+      } else {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
+      }
     } else if (p.type === 'altar') {
       audio.playPickup();
       this.removePickup(p);

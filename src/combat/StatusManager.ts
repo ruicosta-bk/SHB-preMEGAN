@@ -15,7 +15,7 @@ export class StatusManager {
    */
   public static applyStatus(
     entity: EntityWithStatus,
-    type: 'burn' | 'freeze' | 'shock',
+    type: 'burn' | 'freeze' | 'shock' | 'poison',
     duration: number,
     damagePerTick: number = 2,
     tickInterval: number = 0.5,
@@ -59,6 +59,13 @@ export class StatusManager {
             amount: effect.damagePerTick,
             isPlayerAttack: true,
             element: 'fire'
+          });
+          totalDotDamage += effect.damagePerTick;
+        } else if (type === 'poison') {
+          entity.takeDamage({
+            amount: effect.damagePerTick,
+            isPlayerAttack: true,
+            element: 'poison'
           });
           totalDotDamage += effect.damagePerTick;
         }

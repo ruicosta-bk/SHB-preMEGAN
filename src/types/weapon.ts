@@ -9,7 +9,10 @@ export type WeaponId =
   | 'staff'
   | 'frost_sword'
   | 'thunder_staff'
-  | 'inferno_gatling';
+  | 'inferno_gatling'
+  | 'solar_laser'
+  | 'boomerang_blade'
+  | 'glacial_cannon';
 
 export type WeaponCategory = 'gun' | 'melee' | 'bow' | 'beam';
 
@@ -40,5 +43,20 @@ export interface WeaponData {
   isChainLightning?: boolean;
   appliesChill?: boolean;
   appliesBurn?: boolean;
+  isBoomerang?: boolean;
+  isFrostNova?: boolean;
   descriptionVi: string;
+}
+
+export type WeaponCoreId = 'fire' | 'frost' | 'poison' | 'lightning';
+
+export interface WeaponCoreData {
+  id: WeaponCoreId;
+  nameVi: string;
+  shortLabelVi: string;
+  element: 'fire' | 'frost' | 'poison' | 'lightning';
+  bonusDamage: number;
+  colorNum: number;
+  colorHex: string;
+  descVi: string;
 }

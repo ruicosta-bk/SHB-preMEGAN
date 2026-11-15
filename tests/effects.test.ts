@@ -229,4 +229,42 @@ describe('EffectsManager Pooled VFX Tests', () => {
     expect(mock.createdSprites[0].flipX).toBe(false);
     expect(mock.createdSprites[0].blendMode).toBe(1);
   });
+
+  it('supports poison status element color (0x22c55e) in STATUS_ELEMENT_COLORS and spawnStatusPop', () => {
+    const mock = createMockPhaserScene();
+    const fx = new EffectsManager(mock.scene);
+
+    expect(STATUS_ELEMENT_COLORS.poison).toBe(0x22c55e);
+
+    fx.spawnStatusPop(160, 180, 'poison');
+    expect(fx.getActiveCount()).toBe(5); // 1 glow_ring + 4 sparks
+    expect(mock.createdSprites[0].textureKey).toBe('glow_ring');
+    expect(mock.createdSprites.every(s => s.tint === 0x22c55e)).toBe(true);
+  });
+
+  it('spawns ring burst and crit flare via fixed-cap pool while honoring capacity', () => {
+    const mock = createMockPhaserScene();
+    const fx = new EffectsManager(mock.scene, 12);
+
+    fx.spawnRingBurst(200, 200, 0x22c55e, 8);
+    expect(fx.getActiveCount()).toBe(9); // 1 glow_ring + 8 sparks
+    expect(fx.getPoolSize()).toBe(9);
+    expect(mock.createdSprites[0].textureKey).toBe('glow_ring');
+    expect(mock.createdSprites.filter(s => s.textureKey === 'spark_pixel').length).toBe(8);
+
+    // Spawning a crit flare (1 glow_ring + 4 sparks) exceeds capacity=12 and recycles 1 slot
+    fx.spawnCritFlare(240, 240, 0xfacc15);
+    expect(fx.getPoolSize()).toBe(12);
+    expect(fx.getActiveCount()).toBe(12);
+    expect(mock.createdSprites.length).toBe(12);
+    expect(fx.getMetrics().recycledCount).toBe(2); // 9 + 5 = 14 -> 2 recycled
+    expect(mock.getDestroyCount()).toBe(0);
+
+    // Large ring burst also strictly honors pool capacity without dynamic sprite leaks
+    fx.spawnRingBurst(300, 300, 0xf97316, 40);
+    expect(fx.getPoolSize()).toBe(12);
+    expect(fx.getActiveCount()).toBe(12);
+    expect(mock.createdSprites.length).toBe(12);
+    expect(mock.getDestroyCount()).toBe(0);
+  });
 });
