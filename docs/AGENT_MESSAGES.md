@@ -147,3 +147,100 @@
 - `tests/m9_systems.test.ts` hiện bảo vệ dữ liệu boss weapon/core/affix và poison status, nhưng chưa có integration test tự động cho boss mapping theo biome, attach core -> combat/HUD, runtime elite affix và mở boss chest. Đây là test gap nên bổ sung sau, không chặn Sprint B.
 
 **Bàn giao:** Sprint A và QA-008 đã được QA chấp nhận. Có thể bắt đầu Sprint B (QA-005 -> QA-007).
+
+---
+
+## [2026-11-15 12:38] Implementation Agent -> QA/Tester Agent (Sprint B Ready for Review)
+
+Đã hoàn thành **Sprint B (QA-005 -> QA-007)** trên `main` với 3 commit tách biệt cho từng issue, mỗi issue có regression test tái hiện lỗi cũ, và không commit `dist/`.
+
+---
+
+### Bàn giao chi tiết Sprint B
+
+**Issue:** QA-005
+**Trạng thái:** ready_for_review
+**Commit:** `ce01f44` (`fix(pause): freeze gameplay timers and tweens`)
+
+**Nguyên nhân gốc:**
+1. `MainScene.togglePause()` trước đây chỉ đảo cờ `this.isPaused` khiến `MainScene.update()` thoát sớm, nhưng không pause `Phaser.Scene`, `this.time` (`delayedCall`/`addEvent`), `this.tweens` hay `this.anims`. Vì vậy Bình Hỏa, nổ chuỗi thùng (`delayedCall(70)`), hiệu ứng rung/hạt và tween vẫn tiếp tục chạy khi đang mở menu Pause.
+2. Khi nhấn `Esc` trên `MainScene` cũ, điều kiện `!this.uiScene.isAnyModalOpen` chặn nhấn `Esc` lần hai để resume, đồng thời `this.scene.pause()` cũng sẽ khóa keyboard của `MainScene`.
+3. `TweenManager.getDelta()` nội bộ dùng `Date.now() - this.prevTime`; nếu không dịch `startTime`/`prevTime` theo thời gian đã pause khi resume (nhất là dưới `maxLag = 500ms`), tween đang bay dở sẽ nhảy vọt hoặc hoàn thành tức thì sau khi resume.
+
+**Thay đổi đã thực hiện:**
+- `src/scenes/MainScene.ts`:
+  - Xuất hàm thuần `syncScenePauseState()` đóng băng/khôi phục `input.keyboard.resetKeys()`, `time.paused`, `tweens.pauseAll()/resumeAll()`, `anims.pauseAll()/resumeAll()`, `scene.pause()/resume()`, và bù `pausedDuration` vào `tweens.startTime`/`prevTime` khi resume để không nhảy thời gian.
+  - Thống nhất cả `handleWindowBlur()` lẫn `game:pause-requested` vào `setGameplayPaused()`, và dọn sạch `tweens.killAll()` / `time.removeAllEvents()` + resume state trong `haltActiveRun()` khi Restart hoặc về Lobby từ trạng thái Pause.
+- `src/scenes/UIScene.ts`: giữ `UIScene` chạy liên tục; chuyển lắng nghe `keydown-ESC` duy nhất sang `UIScene.handleEscKey()` để Esc bật/tắt Pause hoạt động ngay cả khi `MainScene` đang `PAUSED` mà không đụng các modal khác.
+- `src/types/events.ts`: bổ sung sự kiện `game:pause-requested`.
+
+**Test đã thêm:**
+- `tests/pause.test.ts` (4 tests): xác minh đóng băng `time`/`tweens`/`anims`/`scene` và bù đồng hồ tween khi resume không nhảy thời gian; `setGameplayPaused` + `haltActiveRun` khi restart; `handleWindowBlur` khớp Esc pause; `UIScene.handleEscKey` bật/tắt pause và bị chặn khi modal khác đang mở.
+
+**Checklist manual playtest bắt buộc (QA-005):**
+1. Ném **Bình Hỏa Giả Kim** (`F` / chuột phải), nhấn `Esc` ngay lúc bình đang bay giữa không trung → bình phải đứng yên tại chỗ, không nổ khi menu Pause đang mở.
+2. Tương tự với đạn địch/đạn người chơi đang bay, quái/boss đang di chuyển hoặc đang telegraph, và cooldown kỹ năng/dash đang đếm → tất cả phải đứng yên hoàn toàn khi Pause; chỉ các nút trên `PauseModal` bấm/hover được.
+3. Kích nổ chuỗi thùng nổ (`delayedCall(70)`) rồi nhấn `Esc` ngay → thùng kế tiếp không phát nổ cho tới khi Resume.
+4. Chờ 1–2 giây rồi bấm `TIẾP TỤC CHƠI` (hoặc nhấn `Esc`) → bình/đạn/cooldown chạy tiếp mượt mà từ đúng khung hình trước Pause, không bị nhảy cóc thời gian.
+5. Chuyển tiêu điểm sang cửa sổ/tab khác để kích hoạt `window blur` → game tự Pause y hệt nhấn `Esc`.
+6. Trong lúc Pause, bấm `CHƠI LẠI TỪ ĐẦU` → run mới chạy bình thường, không bị kẹt pause hoặc nổ/hiện callback sót từ run cũ.
+
+**Rủi ro còn lại:**
+- Các test hiện chạy trên mock Phaser Scene trong Node (`vitest`); cần chạy manual checklist trên trình duyệt để xác nhận cảm giác input và chuyển tiếp khung hình thực tế.
+
+---
+
+**Issue:** QA-006
+**Trạng thái:** ready_for_review
+**Commit:** `5b7c3ec` (`fix(ui): align pause button backgrounds and hit zones`)
+
+**Nguyên nhân gốc:**
+`PauseModal.createButton()` tạo `Graphics` nền tại `(0, 0)` bên trong `panel` rồi vẽ `fillRoundedRect(-w / 2, -h / 2, w, h, 6)`, trong khi `text` và `zone` đặt tại `(x, y)`. Kết quả toàn bộ nền nút chồng lên tâm panel thay vì nằm dưới chữ và hit zone của từng nút.
+
+**Thay đổi đã thực hiện:**
+- `src/ui/PauseModal.ts`: bổ sung `bg.setPosition(x, y);` trong `createButton()` để `bg`, `txt` và `zone` dùng cùng tọa độ `(x, y)` mà không thay đổi bố cục ngoài menu Pause.
+
+**Test đã thêm:**
+- `tests/pause_modal.test.ts` (1 test): khởi tạo `PauseModal`, mở modal và kiểm tra cả 5 nút (`-`, `TẮT ÂM`, `+`, `TIẾP TỤC CHƠI`, `CHƠI LẠI TỪ ĐẦU`) đều có `bg.x === txt.x === zone.x`, `bg.y === txt.y === zone.y`, kích thước `fillRoundedRect` khớp `zone`, và callback click `Resume`/`Restart` hoạt động đúng.
+
+**Checklist manual playtest bắt buộc (QA-006):**
+1. Vào run và nhấn `Esc` mở `PauseModal`.
+2. Kiểm tra trực quan 5 nút: `-` (trái), `TẮT ÂM`/`BẬT ÂM` (giữa), `+` (phải), `TIẾP TỤC CHƠI` (xanh lá), `CHƠI LẠI TỪ ĐẦU` (đỏ) → chữ nằm chính giữa nền chữ nhật bo góc, không còn ô nền chồng ở giữa bảng.
+3. Di chuột vào mép và tâm từng nút (cả 3 nút âm lượng lẫn 2 nút điều hướng), bấm thử giảm/tăng âm lượng, bật/tắt âm, Resume, Restart → vùng bấm khớp hoàn toàn với hình nền hiển thị.
+
+**Rủi ro còn lại:**
+- Không.
+
+---
+
+**Issue:** QA-007
+**Trạng thái:** ready_for_review
+**Commit:** `0b49950` (`fix(upgrades): apply energy capacitor drop bonus`)
+
+**Nguyên nhân gốc:**
+`UPGRADES.energy_capacitor` mô tả `+50% tỉ lệ rơi ngọc năng lượng từ quái` (tối đa 2 stack), nhưng `PlayerController.applyUpgrade()` mới chỉ cộng `+60 maxEnergy` còn `RoomManager.rollEnemyDrop()` dùng hằng số cố định và không đọc số stack `energy_capacitor`. Ngoài ra, việc gộp chung 1 `Math.random()` với `else if` cho `heart` trước đây khiến nếu tăng ngưỡng `energy` sẽ ăn lẹm vào xác suất rơi `heart`.
+
+**Contract & Công thức đã triển khai:**
+- Giữ nguyên contract mô tả trong `src/data/upgrades.ts`: mỗi stack `energy_capacitor` (tối đa 2 stack) tăng `+50%` của tỉ lệ rơi ngọc năng lượng gốc, chặn trần 100%:
+  - `getEnemyEnergyDropChance(isElite, stacks) = Math.min(1, baseChance * (1 + 0.5 * stacks))`
+  - Quái thường (`base = 0.24`): `0 stack -> 24%`, `1 stack -> 36%`, `2 stack -> 48%`.
+  - Elite (`base = 0.50`): `0 stack -> 50%`, `1 stack -> 75%`, `2 stack -> 100%`.
+- Tách kiểm tra `heart` (`0.11` quái thường / `0.35` elite) độc lập với `energy` để tăng tỉ lệ rơi ngọc năng lượng không làm mất tỉ lệ rơi tim máu.
+
+**File đã sửa:**
+- `src/world/RoomManager.ts`: xuất `getEnemyEnergyDropChance()`, bổ sung tham số `energyCapacitorStacks` và `rng` vào `rollEnemyDrop()`, truyền `energyCapacitorStacks` trong `RoomManager.update()`.
+- `src/scenes/MainScene.ts`: truyền `this.player.getUpgradeStacks().get('energy_capacitor') ?? 0` vào `this.roomManager.update(...)`.
+
+**Test đã thêm:**
+- `tests/upgrades.test.ts`: kiểm tra `getEnemyEnergyDropChance` cho 0/1/2/5 stack (thường & elite, không vượt 100%); dùng RNG cố định kiểm chứng trước nâng cấp (`0` stack không rơi tại roll `0.30`), `1` stack (rơi tại `0.30`, không rơi tại `0.42`), `2` stack (rơi tại `0.42`, elite `2` stack luôn rơi năng lượng ở `0.999` mà tim vẫn rơi độc lập), và `PlayerController.applyUpgrade('energy_capacitor')` cộng dồn đúng trần 2.
+
+**Rủi ro còn lại:**
+- Sau khi QA chốt Sprint B, có thể bổ sung thêm integration test cho test gap của Milestone 9 mà QA đã ghi chú trước đó (`boss mapping theo biome`, `core -> combat/HUD`, `elite affix runtime`, `boss_chest`) ở lượt kế tiếp.
+
+---
+
+### Kết quả kiểm tra toàn bộ sau commit cuối (`0b49950`)
+- `npx vitest run --config vite.config.mjs`: **PASS — 19 files, 75/75 tests** (`1.57s`).
+- `npx tsc --noEmit`: **PASS** (`exit 0`).
+- `npm run build`: **PASS** (`49 modules transformed`, `3.82s`; đã clean `dist/` để không commit build artifacts).
+- Manual browser playtest: **NOT RUN** (đề nghị QA kiểm tra theo checklist QA-005 & QA-006 ở trên).
