@@ -23,6 +23,79 @@ import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { getMetaBonuses, recordRunResult } from '../core/MetaProgression';
 
+export interface PauseableSceneLike {
+  time?: {
+    paused: boolean;
+    removeAllEvents?: () => void;
+  };
+  tweens?: {
+    paused?: boolean;
+    startTime?: number;
+    prevTime?: number;
+    pauseAll?: () => void;
+    resumeAll?: () => void;
+    killAll?: () => void;
+  };
+  anims?: {
+    pauseAll?: () => void;
+    resumeAll?: () => void;
+  };
+  input?: {
+    keyboard?: { resetKeys?: () => void } | null;
+  } | null;
+  scene?: {
+    pause?: () => void;
+    resume?: () => void;
+  };
+}
+
+/**
+ * Synchronizes Phaser scene, clock, tweens, and animations with the pause state
+ * and shifts TweenManager clocks on resume so elapsed wall time never causes a jump.
+ */
+export function syncScenePauseState(
+  scene: PauseableSceneLike,
+  paused: boolean,
+  pausedAtMs: number = 0,
+  nowMs: number = Date.now()
+): number {
+  if (paused) {
+    scene.input?.keyboard?.resetKeys?.();
+    if (scene.time) {
+      scene.time.paused = true;
+    }
+    if (scene.tweens?.pauseAll) {
+      scene.tweens.pauseAll();
+    } else if (scene.tweens) {
+      scene.tweens.paused = true;
+    }
+    scene.anims?.pauseAll?.();
+    scene.scene?.pause?.();
+    return pausedAtMs > 0 ? pausedAtMs : nowMs;
+  }
+
+  if (pausedAtMs > 0 && scene.tweens) {
+    const pausedDuration = Math.max(0, nowMs - pausedAtMs);
+    if (typeof scene.tweens.startTime === 'number') {
+      scene.tweens.startTime += pausedDuration;
+    }
+    if (typeof scene.tweens.prevTime === 'number' && scene.tweens.prevTime > 0) {
+      scene.tweens.prevTime += pausedDuration;
+    }
+  }
+  if (scene.time) {
+    scene.time.paused = false;
+  }
+  if (scene.tweens?.resumeAll) {
+    scene.tweens.resumeAll();
+  } else if (scene.tweens) {
+    scene.tweens.paused = false;
+  }
+  scene.anims?.resumeAll?.();
+  scene.scene?.resume?.();
+  return 0;
+}
+
 export class MainScene extends Phaser.Scene {
   private player!: PlayerController;
   private pet!: PetController;
@@ -39,6 +112,7 @@ export class MainScene extends Phaser.Scene {
   private turrets: TurretEntity[] = [];
   private isGameRunning: boolean = false;
   private isPaused: boolean = false;
+  private pausedAtMs: number = 0;
   private seed: number = 1000;
   private currentFloor: number = 1;
   private isTransitioningFloor: boolean = false;
@@ -78,26 +152,14 @@ export class MainScene extends Phaser.Scene {
     this.scene.launch('UIScene');
     this.uiScene = this.scene.get('UIScene') as UIScene;
 
-    // 4. Register window blur to auto-pause & reset latched keyboard state
-    window.addEventListener('blur', () => {
-      this.input.keyboard?.resetKeys();
-      if (this.isGameRunning && !this.isPaused && !this.uiScene.isAnyModalOpen) {
-        this.togglePause();
-      }
-    });
+    // 4. Register window blur to auto-pause & reset latched keyboard state (matches Esc pause)
+    window.addEventListener('blur', () => this.handleWindowBlur());
 
     this.input.on('pointerdown', () => {
       if (typeof window.focus === 'function') window.focus();
     });
 
-    // 5. Esc key listener for pause
-    this.input.keyboard!.on('keydown-ESC', () => {
-      if (this.isGameRunning && !this.uiScene.isAnyModalOpen) {
-        this.togglePause();
-      }
-    });
-
-    // 6. E key listener for pickup interaction
+    // 5. E key listener for pickup interaction
     this.input.keyboard!.on('keydown-E', () => {
       this.interactWithNearest();
     });
@@ -352,6 +414,12 @@ export class MainScene extends Phaser.Scene {
       );
     });
 
+    events.on('game:pause-requested', () => {
+      if (this.isGameRunning && !this.isPaused && (!this.uiScene || !this.uiScene.isAnyModalOpen)) {
+        this.setGameplayPaused(true);
+      }
+    });
+
     events.on('game:return-lobby', () => {
       this.haltActiveRun();
     });
@@ -400,7 +468,11 @@ export class MainScene extends Phaser.Scene {
 
   private haltActiveRun(): void {
     this.isGameRunning = false;
+    if (this.isPaused || this.pausedAtMs > 0) {
+      this.pausedAtMs = syncScenePauseState(this, false, this.pausedAtMs);
+    }
     this.isPaused = false;
+    this.pausedAtMs = 0;
     this.isTransitioningFloor = false;
     this.hitStopTimer = 0;
     this.lastHitStopAt = 0;
@@ -410,6 +482,8 @@ export class MainScene extends Phaser.Scene {
     this.floatingNumbers?.hidePrompt();
     this.projectilePool?.clearAll();
     this.effects?.clearAll();
+    this.tweens?.killAll();
+    this.time?.removeAllEvents();
     this.clearTurrets();
     this.cameras?.main?.stopFollow();
 
@@ -550,12 +624,21 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  private togglePause(): void {
-    this.isPaused = !this.isPaused;
+  public handleWindowBlur(): void {
+    this.input?.keyboard?.resetKeys?.();
+    if (this.isGameRunning && !this.isPaused && (!this.uiScene || !this.uiScene.isAnyModalOpen)) {
+      this.setGameplayPaused(true);
+    }
+  }
+
+  private setGameplayPaused(paused: boolean): void {
+    if (this.isPaused === paused) return;
+    this.isPaused = paused;
+    this.pausedAtMs = syncScenePauseState(this, paused, this.pausedAtMs);
     events.emit('game:pause-toggled', {
       isPaused: this.isPaused,
       onResume: () => {
-        this.isPaused = false;
+        this.setGameplayPaused(false);
       },
       onRestart: () => {
         this.startNewRun();

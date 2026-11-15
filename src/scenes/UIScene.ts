@@ -17,6 +17,7 @@ export class UIScene extends Phaser.Scene {
   private selectedHeroId: HeroId = 'alchemist';
   private selectedSkillVariant: SkillVariant = 1;
   private selectedDifficultyMode: DifficultyMode = 'normal';
+  private activePauseResume: (() => void) | null = null;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -83,14 +84,38 @@ export class UIScene extends Phaser.Scene {
 
     events.on('game:pause-toggled', (data: { isPaused: boolean; onResume: () => void; onRestart: () => void }) => {
       if (data.isPaused) {
+        this.activePauseResume = data.onResume;
         this.pauseModal.show(
-          () => data.onResume(),
-          () => data.onRestart()
+          () => {
+            this.activePauseResume = null;
+            data.onResume();
+          },
+          () => {
+            this.activePauseResume = null;
+            data.onRestart();
+          }
         );
       } else {
+        this.activePauseResume = null;
         this.pauseModal.hide();
       }
     });
+
+    // Single Esc listener lives in UIScene so pause/unpause works even while MainScene is paused
+    this.input.keyboard?.on('keydown-ESC', () => this.handleEscKey());
+  }
+
+  public handleEscKey(): void {
+    if (this.pauseModal?.isOpen) {
+      this.pauseModal.hide();
+      const resume = this.activePauseResume;
+      this.activePauseResume = null;
+      resume?.();
+      return;
+    }
+    if (!this.isAnyModalOpen) {
+      events.emit('game:pause-requested');
+    }
   }
 
   private showTitleScreen(): void {

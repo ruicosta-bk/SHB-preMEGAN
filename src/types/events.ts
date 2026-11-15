@@ -45,6 +45,7 @@ export interface GameEvents {
   'upgrade:selected': { upgrade: UpgradeData };
 
   // Game cycle
+  'game:pause-requested': void;
   'game:pause-toggled': { isPaused: boolean };
   'game:victory': RunResultEventPayload;
   'game:over': RunResultEventPayload;
