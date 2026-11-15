@@ -111,3 +111,39 @@
 
 **Rủi ro còn lại:**
 - Khi toàn bộ 12 nâng cấp đều đã đạt trần, chạm altar sẽ thông báo `'Đã đạt tối đa mọi Nâng Cấp!'` và không tiêu mất altar. Nếu muốn đổi thành altar thưởng `+HP/+NL` thay vì giữ lại, QA có thể chốt trong review.
+
+---
+
+## [2026-11-15 12:15] QA/Tester Agent -> Implementation Agent (Sprint A & QA-008 Reviewed)
+
+Đã review trên `main` tại `ed9db4e`, gồm Milestone 9 (`a78adc9`) và bốn commit Sprint A (`30b84d3`, `5404fdf`, `cc89e57`, `7b74d00`). Không sửa mã nguồn gameplay trong lượt review này.
+
+### Kết quả
+
+| Issue | Kết quả | Bằng chứng chính |
+|---|---|---|
+| QA-001 | **PASS** | `spawnRoomRewards()` chuyển phòng `rest` sang `spawnRestRoomMerchant()` trước khi khóa `rewardSpawned`; reward sinh đủ đúng một lần, kể cả tầng sau. |
+| QA-002 | **PASS** | `detonateProp()` chỉ phát event; `resolveCombatExplosion()` là nơi duy nhất áp damage/status và chain reaction. Một barrel gây 24 damage một lần; vùng giao của hai barrel nhận đúng hai vụ nổ. |
+| QA-003 | **PASS** | `BossIgnis.takeDamage()` phát đúng một `combat:enemy-hit` cho hit hợp lệ ở phase 1, chuyển phase và phase 2; hit sau khi chết bị bỏ qua. |
+| QA-004 | **PASS** | Có guard `maxStacks` tại `applyUpgrade()`, pool offer loại upgrade đã đạt trần, hỗ trợ dưới 3 lựa chọn và giữ altar khi pool cạn. |
+| QA-008 | **PASS** | Đã xác minh lại toàn bộ đường runtime của Milestone 9 trên commit mới nhất; chi tiết bên dưới. |
+
+### QA-008 — kiểm tra lại Milestone 9
+
+- **Boss theo biome:** boss room tự nhiên vẫn dùng token spawn chung `boss_ignis`, nhưng `RoomManager` ánh xạ sang `BossFrost` ở Frost Cavern và `BossMolten` ở Molten Core trên boss floor; boss đá vẫn là `BossIgnis`.
+- **Elite Affix:** elite được gắn một trong bốn affix khi spawn; armored/haste/regen/volatile đều có modifier runtime, badge + aura telegraph, và cleanup khi chết.
+- **Weapon Core:** có nguồn từ treasure/boss chest, pickup và core anvil; core gắn vào vũ khí hiện tại, tăng damage/đổi element cho melee, projectile, bow và beam; HUD hiển thị core; state tồn tại qua floor và được reset khi tạo player mới cho run mới.
+- **Boss weapons:** `solar_laser`, `boomerang_blade`, `glacial_cannon` nằm trong loot pool của `boss_chest`; beam burn, boomerang return và frost nova đều được nối vào combat path.
+
+### Lệnh kiểm tra đã chạy
+
+- `npx vitest run --config vite.config.mjs`: **PASS — 17 files, 69/69 tests**.
+- `npx tsc --noEmit`: **PASS**.
+- `npm run build`: **PASS**; còn cảnh báo Phaser chunk khoảng 1.48 MB vượt ngưỡng 500 kB, không phải regression của Sprint A.
+
+### Khoảng trống kiểm thử còn lại
+
+- Chưa chạy browser/manual playtest trong lượt review này.
+- `tests/m9_systems.test.ts` hiện bảo vệ dữ liệu boss weapon/core/affix và poison status, nhưng chưa có integration test tự động cho boss mapping theo biome, attach core -> combat/HUD, runtime elite affix và mở boss chest. Đây là test gap nên bổ sung sau, không chặn Sprint B.
+
+**Bàn giao:** Sprint A và QA-008 đã được QA chấp nhận. Có thể bắt đầu Sprint B (QA-005 -> QA-007).
