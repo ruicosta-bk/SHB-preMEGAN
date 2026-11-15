@@ -28,6 +28,16 @@ export interface RectCollider {
   height: number;
 }
 
+/**
+ * Computes enemy energy orb drop probability with Energy Capacitor stacks.
+ * Each stack adds +50% of the base drop chance, clamped at 100%.
+ */
+export function getEnemyEnergyDropChance(isElite: boolean, energyCapacitorStacks: number = 0): number {
+  const baseChance = isElite ? 0.5 : 0.24;
+  const stacks = Math.max(0, Math.floor(energyCapacitorStacks));
+  return Math.min(1, baseChance * (1 + 0.5 * stacks));
+}
+
 export interface PickupItem {
   type:
     | 'weapon'
@@ -548,7 +558,8 @@ export class RoomManager {
     playerX: number,
     playerY: number,
     pool: ProjectilePool,
-    onRoomEntered?: (roomIndex: number) => void
+    onRoomEntered?: (roomIndex: number) => void,
+    energyCapacitorStacks: number = 0
   ): void {
     // 1. Animate torches
     this.torchTimer += deltaSec;
@@ -631,7 +642,7 @@ export class RoomManager {
             });
           }
         }
-        this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y, enemy.isElite);
+        this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y, enemy.isElite, energyCapacitorStacks);
         this.activeEnemies.splice(i, 1);
         continue;
       }
@@ -696,17 +707,25 @@ export class RoomManager {
     return null;
   }
 
-  private rollEnemyDrop(x: number, y: number, isElite: boolean = false): void {
-    const coinCount = isElite ? 4 : Math.random() < 0.4 ? 2 : 1;
+  public rollEnemyDrop(
+    x: number,
+    y: number,
+    isElite: boolean = false,
+    energyCapacitorStacks: number = 0,
+    rng: () => number = Math.random
+  ): void {
+    const coinCount = isElite ? 4 : rng() < 0.4 ? 2 : 1;
     for (let c = 0; c < coinCount; c++) {
-      this.spawnPickup('coin', x + (Math.random() - 0.5) * 22, y + (Math.random() - 0.5) * 22, 1);
+      this.spawnPickup('coin', x + (rng() - 0.5) * 22, y + (rng() - 0.5) * 22, 1);
     }
 
-    const roll = Math.random();
-    if (roll < (isElite ? 0.5 : 0.24)) {
+    const energyChance = getEnemyEnergyDropChance(isElite, energyCapacitorStacks);
+    const heartChance = isElite ? 0.35 : 0.11;
+    if (rng() < energyChance) {
       this.spawnPickup('energy', x, y, 25);
-    } else if (roll < (isElite ? 0.85 : 0.35)) {
-      this.spawnPickup('heart', x, y, 2);
+    }
+    if (rng() < heartChance) {
+      this.spawnPickup('heart', x + 8, y, 2);
     }
   }
 

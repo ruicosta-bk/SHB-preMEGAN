@@ -11,6 +11,7 @@ import { UPGRADES, canApplyUpgrade, getAvailableUpgradeChoices } from '../src/da
 import { UpgradeId } from '../src/types/upgrade';
 import { PlayerController } from '../src/player/PlayerController';
 import { UpgradeSelectModal } from '../src/ui/UpgradeSelectModal';
+import { RoomManager, getEnemyEnergyDropChance } from '../src/world/RoomManager';
 
 function createMockPlayerScene() {
   const makeSprite = (x: number, y: number, tex: string) => ({
@@ -164,5 +165,64 @@ describe('Upgrade System Unit Tests', () => {
     // Modal opens cleanly when 1 or 2 valid choices remain
     modal.show(partial, () => {});
     expect(modal.isOpen).toBe(true);
+  });
+
+  it('applies Energy Capacitor +50% energy drop bonus per stack, clamped at 100%, with deterministic RNG', () => {
+    // Formula check: base (0.24 normal / 0.50 elite) * (1 + 0.5 * stacks), capped at 1.0
+    expect(getEnemyEnergyDropChance(false, 0)).toBeCloseTo(0.24, 5);
+    expect(getEnemyEnergyDropChance(false, 1)).toBeCloseTo(0.36, 5);
+    expect(getEnemyEnergyDropChance(false, 2)).toBeCloseTo(0.48, 5);
+    expect(getEnemyEnergyDropChance(true, 0)).toBeCloseTo(0.5, 5);
+    expect(getEnemyEnergyDropChance(true, 1)).toBeCloseTo(0.75, 5);
+    expect(getEnemyEnergyDropChance(true, 2)).toBe(1);
+    expect(getEnemyEnergyDropChance(true, 5)).toBe(1);
+
+    const makeSequenceRng = (values: number[]) => {
+      let idx = 0;
+      return () => values[Math.min(idx++, values.length - 1)];
+    };
+
+    const runRoll = (isElite: boolean, stacks: number, rngValues: number[]) => {
+      const dropped: string[] = [];
+      const fakeRm: any = {
+        spawnPickup: (type: string) => dropped.push(type)
+      };
+      RoomManager.prototype.rollEnemyDrop.call(
+        fakeRm,
+        200,
+        200,
+        isElite,
+        stacks,
+        makeSequenceRng(rngValues)
+      );
+      return dropped;
+    };
+
+    // Normal enemy: coinCount roll=0.6 (1 coin -> 2 offset rngs), energy roll=0.30, heart roll=0.90
+    // At 0 stacks (threshold 0.24): 0.30 does NOT drop energy
+    expect(runRoll(false, 0, [0.6, 0.5, 0.5, 0.30, 0.9])).not.toContain('energy');
+    // At 1 stack (threshold 0.36): 0.30 DOES drop energy
+    expect(runRoll(false, 1, [0.6, 0.5, 0.5, 0.30, 0.9])).toContain('energy');
+
+    // Roll 0.42 misses at 1 stack (0.36) but hits at 2 stacks (0.48)
+    expect(runRoll(false, 1, [0.6, 0.5, 0.5, 0.42, 0.9])).not.toContain('energy');
+    expect(runRoll(false, 2, [0.6, 0.5, 0.5, 0.42, 0.9])).toContain('energy');
+
+    // Elite at 2 stacks has 100% energy drop even on high roll (0.999) while heart chance remains independent
+    const eliteMaxStackDrops = runRoll(true, 2, [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.999, 0.2]);
+    expect(eliteMaxStackDrops).toContain('energy');
+    expect(eliteMaxStackDrops).toContain('heart');
+
+    // Verify PlayerController tracks energy_capacitor stacks cleanly up to maxStacks=2
+    const player = new PlayerController(createMockPlayerScene(), 100, 100, 'knight');
+    const baseMaxEnergy = player.stats.maxEnergy;
+    expect(player.getUpgradeStacks().get('energy_capacitor') ?? 0).toBe(0);
+    expect(player.applyUpgrade('energy_capacitor')).toBe(true);
+    expect(player.stats.maxEnergy).toBe(baseMaxEnergy + 60);
+    expect(player.getUpgradeStacks().get('energy_capacitor')).toBe(1);
+    expect(player.applyUpgrade('energy_capacitor')).toBe(true);
+    expect(player.stats.maxEnergy).toBe(baseMaxEnergy + 120);
+    expect(player.getUpgradeStacks().get('energy_capacitor')).toBe(2);
+    expect(player.applyUpgrade('energy_capacitor')).toBe(false);
   });
 });

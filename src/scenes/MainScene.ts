@@ -755,7 +755,8 @@ export class MainScene extends Phaser.Scene {
         if (this.uiScene && this.uiScene.hud) {
           this.uiScene.hud.renderMinimap(this.roomManager.rooms, roomIdx);
         }
-      }
+      },
+      this.player.getUpgradeStacks().get('energy_capacitor') ?? 0
     );
 
     // 3b. Update Clockwork Golem Pet Companion
