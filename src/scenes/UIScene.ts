@@ -75,8 +75,8 @@ export class UIScene extends Phaser.Scene {
     events.on('game:over', openGameOverModal);
     events.on('game:victory', openGameOverModal);
 
-    events.on('upgrade:offer', (data: { onSelected: (upg: any) => void }) => {
-      this.upgradeModal.show((selected) => {
+    events.on('upgrade:offer', (data: { choices?: any[]; onSelected: (upg: any) => void }) => {
+      this.upgradeModal.show(data.choices ?? [], (selected) => {
         data.onSelected(selected);
       });
     });

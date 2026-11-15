@@ -98,3 +98,35 @@ export const UPGRADES: Record<UpgradeId, UpgradeData> = {
     maxStacks: 1
   }
 };
+
+function getStackCount(
+  stacks: ReadonlyMap<UpgradeId, number> | Partial<Record<UpgradeId, number>>,
+  id: UpgradeId
+): number {
+  if (stacks instanceof Map) {
+    return stacks.get(id) ?? 0;
+  }
+  return (stacks as Partial<Record<UpgradeId, number>>)[id] ?? 0;
+}
+
+export function canApplyUpgrade(
+  stacks: ReadonlyMap<UpgradeId, number> | Partial<Record<UpgradeId, number>>,
+  upgradeId: UpgradeId
+): boolean {
+  const meta = UPGRADES[upgradeId];
+  if (!meta) return false;
+  return getStackCount(stacks, upgradeId) < meta.maxStacks;
+}
+
+export function getAvailableUpgradeChoices(
+  stacks: ReadonlyMap<UpgradeId, number> | Partial<Record<UpgradeId, number>>,
+  count: number = 3,
+  rng: () => number = Math.random
+): UpgradeData[] {
+  const eligible = Object.values(UPGRADES).filter(u => getStackCount(stacks, u.id) < u.maxStacks);
+  for (let i = eligible.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
+  }
+  return eligible.slice(0, Math.max(0, count));
+}

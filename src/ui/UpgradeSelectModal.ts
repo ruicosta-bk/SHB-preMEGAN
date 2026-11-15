@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { UpgradeData } from '../types/upgrade';
 import { UPGRADES } from '../data/upgrades';
-import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 
 export class UpgradeSelectModal {
@@ -14,7 +13,28 @@ export class UpgradeSelectModal {
     this.container = scene.add.container(0, 0).setDepth(200).setScrollFactor(0).setVisible(false);
   }
 
-  public show(onSelected: (upgrade: UpgradeData) => void): void {
+  public show(
+    choicesOrCallback: UpgradeData[] | ((upgrade: UpgradeData) => void),
+    maybeOnSelected?: (upgrade: UpgradeData) => void
+  ): void {
+    let choices: UpgradeData[];
+    let onSelected: (upgrade: UpgradeData) => void;
+
+    if (typeof choicesOrCallback === 'function') {
+      const allUpgrades = Object.values(UPGRADES);
+      Phaser.Utils.Array.Shuffle(allUpgrades);
+      choices = allUpgrades.slice(0, 3);
+      onSelected = choicesOrCallback;
+    } else {
+      choices = choicesOrCallback.slice(0, 3);
+      onSelected = maybeOnSelected ?? (() => {});
+    }
+
+    if (choices.length === 0) {
+      this.hide();
+      return;
+    }
+
     this.isOpen = true;
     this.container.removeAll(true);
     this.container.setVisible(true);
@@ -35,22 +55,22 @@ export class UpgradeSelectModal {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const sub = this.scene.add.text(640, 150, 'Chọn 1 trong 3 tàn tích cổ xưa để gia tăng sức mạnh:', {
-      fontFamily: "'Segoe UI', Roboto, sans-serif",
-      fontSize: '15px',
-      color: '#94a3b8'
-    }).setOrigin(0.5);
+    const sub = this.scene.add.text(
+      640,
+      150,
+      `Chọn 1 trong ${choices.length} tàn tích cổ xưa để gia tăng sức mạnh:`,
+      {
+        fontFamily: "'Segoe UI', Roboto, sans-serif",
+        fontSize: '15px',
+        color: '#94a3b8'
+      }
+    ).setOrigin(0.5);
     this.container.add(sub);
-
-    // Pick 3 random distinct upgrades
-    const allUpgrades = Object.values(UPGRADES);
-    Phaser.Utils.Array.Shuffle(allUpgrades);
-    const choices = allUpgrades.slice(0, 3);
 
     const cardW = 280;
     const cardH = 360;
     const spacing = 45;
-    const totalW = 3 * cardW + 2 * spacing;
+    const totalW = choices.length * cardW + Math.max(0, choices.length - 1) * spacing;
     const startX = (1280 - totalW) / 2 + cardW / 2;
     const cardY = 380;
 

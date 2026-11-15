@@ -1189,10 +1189,23 @@ export class MainScene extends Phaser.Scene {
         this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
       }
     } else if (p.type === 'altar') {
+      const choices = this.player.getAvailableUpgrades(3);
+      if (choices.length === 0) {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(
+          this.player.sprite.x,
+          this.player.sprite.y - 24,
+          'Đã đạt tối đa mọi Nâng Cấp!',
+          '#f59e0b'
+        );
+        return;
+      }
+
       audio.playPickup();
       this.removePickup(p);
 
       events.emit('upgrade:offer', {
+        choices,
         onSelected: (selectedUpgrade: any) => {
           this.player.applyUpgrade(selectedUpgrade.id);
         }

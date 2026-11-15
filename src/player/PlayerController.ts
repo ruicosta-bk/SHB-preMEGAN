@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { Stats, DamageInfo, DamageResult } from '../types/entity';
 import { WeaponCoreData, WeaponCoreId, WeaponData, WeaponId } from '../types/weapon';
-import { UpgradeId } from '../types/upgrade';
+import { UpgradeData, UpgradeId } from '../types/upgrade';
 import { WEAPONS } from '../data/weapons';
 import { getWeaponCore } from '../data/weaponCores';
 import { findMergeResult } from '../data/merges';
-import { UPGRADES } from '../data/upgrades';
+import { UPGRADES, getAvailableUpgradeChoices } from '../data/upgrades';
 import { HEROES, HeroConfig, HeroId, SkillVariant, getHeroSkillMeta, shouldResetSkillOnKill } from '../data/heroes';
 import type { EnemyBase } from '../enemies/EnemyBase';
 import { DamageCalculator } from '../combat/DamageCalculator';
@@ -267,8 +267,20 @@ export class PlayerController {
     }
   }
 
-  public applyUpgrade(upgradeId: UpgradeId): void {
+  public getUpgradeStacks(): Map<UpgradeId, number> {
+    return new Map(this.upgrades);
+  }
+
+  public getAvailableUpgrades(count: number = 3): UpgradeData[] {
+    return getAvailableUpgradeChoices(this.upgrades, count);
+  }
+
+  public applyUpgrade(upgradeId: UpgradeId): boolean {
+    const meta = UPGRADES[upgradeId];
     const curStacks = this.upgrades.get(upgradeId) || 0;
+    if (!meta || curStacks >= meta.maxStacks) {
+      return false;
+    }
     this.upgrades.set(upgradeId, curStacks + 1);
 
     switch (upgradeId) {
@@ -296,6 +308,7 @@ export class PlayerController {
     }
 
     this.emitStats();
+    return true;
   }
 
   public getForgeLevel(weaponId: string): number {
