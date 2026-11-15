@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { audio } from '../core/AudioSystem';
-import { HERO_LIST, HeroId } from '../data/heroes';
+import { HEROES, HERO_LIST, HeroId, SkillVariant, getHeroSkillMeta } from '../data/heroes';
 import { WEAPONS } from '../data/weapons';
 import { getAllRecipesForDisplay } from '../data/merges';
 import {
@@ -17,13 +17,14 @@ export class TitleScreen {
   private container: Phaser.GameObjects.Container;
   public isOpen: boolean = true;
   public selectedHeroId: HeroId = 'alchemist';
+  public selectedSkillVariant: SkillVariant = 1;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(300).setScrollFactor(0);
   }
 
-  public show(onStart: (heroId: HeroId) => void): void {
+  public show(onStart: (heroId: HeroId, skillVariant: SkillVariant) => void): void {
     this.isOpen = true;
     this.container.removeAll(true);
     this.container.setVisible(true);
@@ -73,7 +74,7 @@ export class TitleScreen {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const subtitle = this.scene.add.text(640, 62, 'CHỌN 1 TRONG 6 ANH HÙNG & NÂNG CẤP VĨNH VIỄN', {
+    const subtitle = this.scene.add.text(640, 62, 'CHỌN 1 TRONG 8 ANH HÙNG, TUYỆT KỸ [F] & NÂNG CẤP VĨNH VIỄN', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '12.5px',
       color: '#38bdf8',
@@ -105,14 +106,14 @@ export class TitleScreen {
     }).setOrigin(1, 0.5);
     this.container.add(recordStatusText);
 
-    // 6 Hero Class Selection Cards in crisp 3 x 2 Grid
-    const cardW = 382;
-    const cardH = 124;
-    const gapX = 18;
-    const gapY = 10;
-    const cols = 3;
+    // 8 Hero Class Selection Cards in crisp 4 x 2 Grid (X: 39..1241, Y: 79..315)
+    const cardW = 290;
+    const cardH = 114;
+    const gapX = 14;
+    const gapY = 8;
+    const cols = 4;
     const gridStartX = 640 - (cardW * cols + gapX * (cols - 1)) / 2 + cardW / 2;
-    const gridStartY = 148;
+    const gridStartY = 136;
 
     const getCardPos = (idx: number) => {
       const col = idx % cols;
@@ -123,84 +124,209 @@ export class TitleScreen {
       };
     };
 
-    const cardBgs: Map<HeroId, Phaser.GameObjects.Graphics> = new Map();
+    interface HeroCardRefs {
+      bg: Phaser.GameObjects.Graphics;
+      badgeBg: Phaser.GameObjects.Graphics;
+      badgeText: Phaser.GameObjects.Text;
+    }
+
+    const cardRefs: Map<HeroId, HeroCardRefs> = new Map();
+
+    // Skill 1 / Skill 2 Selector Bar (Y: 324..372, X: 47..1233)
+    const skillBarBg = this.scene.add.graphics();
+    skillBarBg.fillStyle(0x111827, 0.94);
+    skillBarBg.fillRoundedRect(47, 324, 1186, 48, 10);
+    skillBarBg.lineStyle(1.5, 0x334155, 0.85);
+    skillBarBg.strokeRoundedRect(47, 324, 1186, 48, 10);
+    this.container.add(skillBarBg);
+
+    const sBtnW = 278;
+    const sBtnH = 34;
+    const sBtnY = 348;
+    const s1BtnX = 197; // 58..336
+    const s2BtnX = 485; // 346..624
+
+    const s1Bg = this.scene.add.graphics();
+    const s2Bg = this.scene.add.graphics();
+    this.container.add(s1Bg);
+    this.container.add(s2Bg);
+
+    const s1Label = this.scene.add.text(s1BtnX, sBtnY, '', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '11.5px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.container.add(s1Label);
+
+    const s2Label = this.scene.add.text(s2BtnX, sBtnY, '', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '11.5px',
+      color: '#94a3b8',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.container.add(s2Label);
+
+    const skillBarDesc = this.scene.add.text(638, sBtnY, '', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '11.5px',
+      color: '#e2e8f0',
+      wordWrap: { width: 582 }
+    }).setOrigin(0, 0.5);
+    this.container.add(skillBarDesc);
+
+    const refreshSkillBar = () => {
+      const hero = HEROES[this.selectedHeroId];
+      const s1Meta = getHeroSkillMeta(this.selectedHeroId, 1);
+      const s2Meta = getHeroSkillMeta(this.selectedHeroId, 2);
+      const activeMeta = getHeroSkillMeta(this.selectedHeroId, this.selectedSkillVariant);
+
+      const drawSkillBtn = (
+        g: Phaser.GameObjects.Graphics,
+        bx: number,
+        label: Phaser.GameObjects.Text,
+        text: string,
+        selected: boolean
+      ) => {
+        g.clear();
+        g.fillStyle(selected ? 0x1e293b : 0x0f172a, 0.96);
+        g.fillRoundedRect(bx - sBtnW / 2, sBtnY - sBtnH / 2, sBtnW, sBtnH, 8);
+        g.lineStyle(selected ? 2.5 : 1.5, selected ? hero.accentColor : 0x334155, selected ? 1 : 0.85);
+        g.strokeRoundedRect(bx - sBtnW / 2, sBtnY - sBtnH / 2, sBtnW, sBtnH, 8);
+        label.setText(text);
+        label.setColor(selected ? hero.accentHex : '#94a3b8');
+      };
+
+      drawSkillBtn(
+        s1Bg,
+        s1BtnX,
+        s1Label,
+        `[S1] ${s1Meta.nameVi} (${s1Meta.cooldown}s)`,
+        this.selectedSkillVariant === 1
+      );
+      drawSkillBtn(
+        s2Bg,
+        s2BtnX,
+        s2Label,
+        `[S2] ${s2Meta.nameVi} (${s2Meta.cooldown}s)`,
+        this.selectedSkillVariant === 2
+      );
+      skillBarDesc.setText(`✦ ${activeMeta.nameVi}: ${activeMeta.descVi}`);
+    };
+
+    const s1Zone = this.scene.add.zone(s1BtnX, sBtnY, sBtnW, sBtnH).setInteractive({ useHandCursor: true });
+    const s2Zone = this.scene.add.zone(s2BtnX, sBtnY, sBtnW, sBtnH).setInteractive({ useHandCursor: true });
+    this.container.add(s1Zone);
+    this.container.add(s2Zone);
 
     const redrawCards = () => {
       HERO_LIST.forEach((h, idx) => {
-        const g = cardBgs.get(h.id);
-        if (!g) return;
+        const ref = cardRefs.get(h.id);
+        if (!ref) return;
         const { cx, cy } = getCardPos(idx);
         const isSel = this.selectedHeroId === h.id;
-        g.clear();
-        g.fillStyle(isSel ? 0x1e293b : 0x111827, 0.94);
-        g.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
-        g.lineStyle(isSel ? 3 : 1.5, isSel ? h.accentColor : 0x374151, isSel ? 1 : 0.8);
-        g.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
+
+        ref.bg.clear();
+        ref.bg.fillStyle(isSel ? 0x1e293b : 0x111827, 0.94);
+        ref.bg.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
+        ref.bg.lineStyle(isSel ? 3 : 1.5, isSel ? h.accentColor : 0x374151, isSel ? 1 : 0.8);
+        ref.bg.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 10);
+
+        const variant: SkillVariant = isSel ? this.selectedSkillVariant : 1;
+        const meta = getHeroSkillMeta(h.id, variant);
+        const badgeX = cx - 133;
+        const badgeY = cy + 20;
+        const badgeW = 144;
+        const badgeH = 24;
+
+        ref.badgeBg.clear();
+        ref.badgeBg.fillStyle(isSel ? 0x0f172a : 0x0b1120, 0.95);
+        ref.badgeBg.fillRoundedRect(badgeX, badgeY, badgeW, badgeH, 6);
+        ref.badgeBg.lineStyle(1, isSel ? h.accentColor : 0x475569, isSel ? 0.95 : 0.7);
+        ref.badgeBg.strokeRoundedRect(badgeX, badgeY, badgeW, badgeH, 6);
+
+        ref.badgeText.setText(`[S${variant}] ${meta.shortLabelVi} · ${meta.cooldown}s`);
+        ref.badgeText.setColor(isSel ? h.accentHex : '#fbbf24');
       });
     };
+
+    s1Zone.on('pointerdown', () => {
+      audio.init();
+      audio.resume();
+      audio.playPickup();
+      this.selectedSkillVariant = 1;
+      redrawCards();
+      refreshSkillBar();
+    });
+
+    s2Zone.on('pointerdown', () => {
+      audio.init();
+      audio.resume();
+      audio.playPickup();
+      this.selectedSkillVariant = 2;
+      redrawCards();
+      refreshSkillBar();
+    });
 
     HERO_LIST.forEach((hero, idx) => {
       const { cx, cy } = getCardPos(idx);
       const bg = this.scene.add.graphics();
-      cardBgs.set(hero.id, bg);
       this.container.add(bg);
 
-      const heroSprite = this.scene.add.sprite(cx - 146, cy - 26, `${hero.texturePrefix}_idle`).setScale(1.9);
+      const heroSprite = this.scene.add.sprite(cx - 108, cy - 16, `${hero.texturePrefix}_idle`).setScale(1.85);
       this.container.add(heroSprite);
 
       const weaponData = WEAPONS[hero.startWeapon];
-      const weaponIcon = this.scene.add.sprite(cx + 154, cy - 35, weaponData.iconTexture).setScale(1.0);
+      const weaponIcon = this.scene.add.sprite(cx + 120, cy - 30, weaponData.iconTexture).setScale(0.95);
       this.container.add(weaponIcon);
 
-      const nameText = this.scene.add.text(cx - 106, cy - 44, hero.nameVi, {
+      const nameText = this.scene.add.text(cx - 72, cy - 39, hero.nameVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '15px',
+        fontSize: '13.5px',
         color: hero.accentHex,
         fontStyle: 'bold'
       }).setOrigin(0, 0.5);
       this.container.add(nameText);
 
-      const roleText = this.scene.add.text(cx - 106, cy - 26, hero.roleVi, {
+      const roleText = this.scene.add.text(cx - 72, cy - 21, hero.roleVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '11px',
+        fontSize: '10.5px',
         color: '#94a3b8'
       }).setOrigin(0, 0.5);
       this.container.add(roleText);
 
       const statsText = this.scene.add.text(
-        cx - 106,
-        cy - 8,
-        `Máu: ${hero.hp} | Giáp: ${hero.armor} | NL: ${hero.maxEnergy}`,
+        cx - 72,
+        cy - 2,
+        `HP: ${hero.hp} | Giáp: ${hero.armor} | NL: ${hero.maxEnergy}`,
         {
           fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '11px',
+          fontSize: '10.5px',
           color: '#e2e8f0',
           fontStyle: 'bold'
         }
       ).setOrigin(0, 0.5);
       this.container.add(statsText);
 
-      const skillTitle = this.scene.add.text(
-        cx - 170,
-        cy + 14,
-        `[F] ${hero.skillNameVi} (${weaponData.nameVi})`,
-        {
-          fontFamily: "'Segoe UI', Roboto, sans-serif",
-          fontSize: '11.5px',
-          color: '#fbbf24',
-          fontStyle: 'bold'
-        }
-      ).setOrigin(0, 0.5);
-      this.container.add(skillTitle);
+      const badgeBg = this.scene.add.graphics();
+      this.container.add(badgeBg);
 
-      const skillDesc = this.scene.add.text(cx - 170, cy + 26, hero.skillDescVi, {
+      const badgeText = this.scene.add.text(cx - 61, cy + 32, '', {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '11px',
-        color: '#cbd5e1',
-        wordWrap: { width: cardW - 34 },
-        lineSpacing: 2
-      }).setOrigin(0, 0);
-      this.container.add(skillDesc);
+        fontSize: '10.5px',
+        color: '#fbbf24',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.container.add(badgeText);
+
+      const weaponLabel = this.scene.add.text(cx + 133, cy + 32, weaponData.nameVi, {
+        fontFamily: "'Segoe UI', Roboto, sans-serif",
+        fontSize: '10.5px',
+        color: '#cbd5e1'
+      }).setOrigin(1, 0.5);
+      this.container.add(weaponLabel);
+
+      cardRefs.set(hero.id, { bg, badgeBg, badgeText });
 
       const cardZone = this.scene.add.zone(cx, cy, cardW, cardH).setInteractive({ useHandCursor: true });
       this.container.add(cardZone);
@@ -210,15 +336,17 @@ export class TitleScreen {
         audio.playPickup();
         this.selectedHeroId = hero.id;
         redrawCards();
+        refreshSkillBar();
       });
     });
 
     redrawCards();
+    refreshSkillBar();
 
-    // Sảnh Nâng Cấp Vĩnh Viễn (5 compact upgrade cards)
-    const upgradeSectionTitle = this.scene.add.text(640, 366, '✦ SẢNH NÂNG CẤP VĨNH VIỄN (NGỌC HỒN) ✦', {
+    // Sảnh Nâng Cấp Vĩnh Viễn (Y: 382..540, 5 compact upgrade cards)
+    const upgradeSectionTitle = this.scene.add.text(640, 386, '✦ SẢNH NÂNG CẤP VĨNH VIỄN (NGỌC HỒN) ✦', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
-      fontSize: '13.5px',
+      fontSize: '13px',
       color: '#38bdf8',
       fontStyle: 'bold',
       stroke: '#000000',
@@ -227,11 +355,11 @@ export class TitleScreen {
     this.container.add(upgradeSectionTitle);
 
     const upgW = 226;
-    const upgH = 148;
+    const upgH = 124;
     const upgGap = 14;
     const upgCount = META_UPGRADE_IDS.length;
     const upgStartX = 640 - (upgW * upgCount + upgGap * (upgCount - 1)) / 2 + upgW / 2;
-    const upgY = 460;
+    const upgY = 466;
 
     interface UpgradeCardRefs {
       id: MetaUpgradeId;
@@ -271,7 +399,7 @@ export class TitleScreen {
         const pipH = 7;
         const pipGap = 6;
         const pipStartX = ref.ux - 68;
-        const pipY = ref.uy + 16;
+        const pipY = ref.uy + 14;
         for (let i = 0; i < cfg.maxLevel; i++) {
           const filled = i < level;
           ref.pipGfx.fillStyle(filled ? 0x38bdf8 : 0x1e293b, 1);
@@ -285,8 +413,8 @@ export class TitleScreen {
 
         ref.btnBg.clear();
         const actionW = 192;
-        const actionH = 28;
-        const actionY = ref.uy + 47;
+        const actionH = 26;
+        const actionY = ref.uy + 40;
         const btnFill = isMax ? 0x14532d : canAfford ? (ref.hovered ? 0x0ea5e9 : 0x0284c7) : 0x1e293b;
         const btnStroke = isMax ? 0x22c55e : canAfford ? 0x7dd3fc : 0x475569;
         ref.btnBg.fillStyle(btnFill, 1);
@@ -315,9 +443,9 @@ export class TitleScreen {
       const bg = this.scene.add.graphics();
       this.container.add(bg);
 
-      const upgTitle = this.scene.add.text(ux, uy - 50, cfg.nameVi, {
+      const upgTitle = this.scene.add.text(ux, uy - 44, cfg.nameVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '13px',
+        fontSize: '12.5px',
         color: '#fbbf24',
         fontStyle: 'bold',
         align: 'center',
@@ -325,22 +453,22 @@ export class TitleScreen {
       }).setOrigin(0.5);
       this.container.add(upgTitle);
 
-      const upgDesc = this.scene.add.text(ux, uy - 17, cfg.descVi, {
+      const upgDesc = this.scene.add.text(ux, uy - 16, cfg.descVi, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '11px',
+        fontSize: '10.5px',
         color: '#cbd5e1',
         align: 'center',
-        wordWrap: { width: upgW - 22 },
-        lineSpacing: 2
+        wordWrap: { width: upgW - 20 },
+        lineSpacing: 1
       }).setOrigin(0.5);
       this.container.add(upgDesc);
 
       const pipGfx = this.scene.add.graphics();
       this.container.add(pipGfx);
 
-      const levelText = this.scene.add.text(ux + 68, uy + 16, 'Lv 0/3', {
+      const levelText = this.scene.add.text(ux + 68, uy + 14, 'Lv 0/3', {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '11.5px',
+        fontSize: '11px',
         color: '#e2e8f0',
         fontStyle: 'bold'
       }).setOrigin(1, 0.5);
@@ -349,9 +477,9 @@ export class TitleScreen {
       const btnBg = this.scene.add.graphics();
       this.container.add(btnBg);
 
-      const btnLabel = this.scene.add.text(ux, uy + 47, '', {
+      const btnLabel = this.scene.add.text(ux, uy + 40, '', {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '12px',
+        fontSize: '11.5px',
         color: '#ffffff',
         fontStyle: 'bold'
       }).setOrigin(0.5);
@@ -395,10 +523,10 @@ export class TitleScreen {
 
     refreshMetaUI();
 
-    // Start Button
+    // Start Button (Y: 552..596)
     const btnW = 300;
-    const btnH = 48;
-    const btnY = 584;
+    const btnH = 44;
+    const btnY = 574;
 
     const btnBg = this.scene.add.graphics();
     btnBg.fillStyle(0xd97706, 1.0);
@@ -439,15 +567,15 @@ export class TitleScreen {
       audio.resume();
       audio.playPickup();
       this.hide();
-      onStart(this.selectedHeroId);
+      onStart(this.selectedHeroId, this.selectedSkillVariant);
     });
 
-    // Bottom concise Merge Hints & Companion tip bar
+    // Bottom concise Merge Hints & Companion tip bar (Y: 616..698)
     const footerBg = this.scene.add.graphics();
     footerBg.fillStyle(0x111827, 0.88);
-    footerBg.fillRoundedRect(47, 626, 1186, 72, 10);
+    footerBg.fillRoundedRect(47, 616, 1186, 82, 10);
     footerBg.lineStyle(1.5, 0x374151, 0.8);
-    footerBg.strokeRoundedRect(47, 626, 1186, 72, 10);
+    footerBg.strokeRoundedRect(47, 616, 1186, 82, 10);
     this.container.add(footerBg);
 
     const recipes = getAllRecipesForDisplay();
@@ -463,7 +591,7 @@ export class TitleScreen {
       .map(([resultName, pairs]) => `${pairs.join(' / ')} → ${resultName}`)
       .join('   |   ');
 
-    const mergeHintText = this.scene.add.text(640, 646, `⚒️ Hợp Nhất Lò Rèn: ${mergeSummary}`, {
+    const mergeHintText = this.scene.add.text(640, 640, `⚒️ Hợp Nhất Lò Rèn: ${mergeSummary}`, {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '11px',
       color: '#fbbf24',
@@ -474,7 +602,7 @@ export class TitleScreen {
 
     const companionTip = this.scene.add.text(
       640,
-      682,
+      680,
       '🦊 Cáo Lửa Đồng Hành: tự lao tấn công & chặn 1 đạn mỗi 6s; tự hút vàng/NL/máu từ xa  •  Esc: Tạm dừng',
       {
         fontFamily: "'Segoe UI', Roboto, sans-serif",

@@ -15,6 +15,7 @@ export class TextureGenerator {
     this.createProjectiles(tm);
     this.createHeldWeapons(tm);
     this.createPickupsAndProps(tm);
+    this.createTurretFrames(tm);
     this.createIcons(tm);
   }
 
@@ -533,7 +534,7 @@ export class TextureGenerator {
       ctx.fillRect(x, y, w, h);
     };
 
-    type HeroVisualClass = 'alchemist' | 'rogue' | 'vanguard' | 'knight' | 'wizard' | 'vampire';
+    type HeroVisualClass = 'alchemist' | 'rogue' | 'vanguard' | 'knight' | 'wizard' | 'vampire' | 'engineer' | 'berserker';
 
     const drawHeroSprite = (
       key: string,
@@ -564,6 +565,25 @@ export class TextureGenerator {
         px(ctx, o, 3, 10 + bob, 22, 13);
         px(ctx, tr, 4, 11 + bob, 20, 11);
         px(ctx, '#450a0a', 5, 14 + bob, 18, 7);
+      } else if (classId === 'engineer') {
+        // Mechanical backpack + large amber wrench rising behind left shoulder
+        px(ctx, o, 2, 5 + bob + tailLift, 6, 5);
+        px(ctx, o, 3, 9 + bob + tailLift, 4, 8);
+        px(ctx, tr, 3, 6 + bob + tailLift, 1, 3); // left wrench jaw
+        px(ctx, tr, 6, 6 + bob + tailLift, 1, 3); // right wrench jaw
+        px(ctx, tr, 3, 8 + bob + tailLift, 4, 2); // wrench collar
+        px(ctx, tr, 4, 10 + bob + tailLift, 2, 6); // wrench shaft
+        px(ctx, isHurt ? '#ffffff' : '#fef08a', 4, 9 + bob + tailLift, 1, 2); // metallic gleam
+        px(ctx, o, 4, 13 + bob, 19, 10);
+        px(ctx, hd, 5, 14 + bob, 17, 8);
+      } else if (classId === 'berserker') {
+        // Trailing crimson headband tails behind left side
+        px(ctx, o, 1, 9 + bob + tailLift, 6, 4);
+        px(ctx, tr, 2, 10 + bob + tailLift, 4, 2);
+        px(ctx, o, 2, 12 + bob + tailLift, 4, 3);
+        px(ctx, isHurt ? '#fca5a5' : '#991b1b', 3, 13 + bob + tailLift, 2, 1);
+        px(ctx, o, 5, 13 + bob, 18, 10);
+        px(ctx, '#334155', 6, 14 + bob, 16, 8);
       } else {
         px(ctx, o, 5, 13 + bob, 18, 10);
         px(ctx, hd, 6, 14 + bob, 16, 8);
@@ -644,6 +664,45 @@ export class TextureGenerator {
         px(ctx, '#fecaca', 17, 11 + bob, 1, 1);
         // Magenta neck scarf
         px(ctx, tr, 8, 13 + bob, 12, 2);
+      } else if (classId === 'engineer') {
+        // Engineer cap + brass welding goggles with glowing teal lenses + teal-slate collar
+        px(ctx, hd, 8, 4 + bob, 12, 6);
+        px(ctx, bh, 9, 4 + bob, 10, 2);
+        // Brass welding goggles spanning brow
+        px(ctx, o, 6, 6 + bob, 16, 5);
+        px(ctx, tr, 7, 7 + bob, 6, 3);
+        px(ctx, tr, 15, 7 + bob, 6, 3);
+        px(ctx, isHurt ? '#fca5a5' : '#b45309', 13, 8 + bob, 2, 2); // brass bridge
+        // Glowing teal lenses
+        px(ctx, ey, 8, 8 + bob, 4, 2);
+        px(ctx, ey, 16, 8 + bob, 4, 2);
+        px(ctx, '#ccfbf1', 9, 8 + bob, 2, 1);
+        px(ctx, '#ccfbf1', 17, 8 + bob, 2, 1);
+        // Warm face lower + teal-slate scarf collar
+        px(ctx, sk, 9, 11 + bob, 10, 3);
+        px(ctx, '#334155', 11, 12 + bob, 6, 1); // respirator/smirk line
+        px(ctx, hd, 8, 13 + bob, 12, 2);
+      } else if (classId === 'berserker') {
+        // Spiked crimson mane + crimson headband + fierce glowing eyes
+        px(ctx, o, 6, 1 + bob, 4, 4);
+        px(ctx, o, 11, 0 + bob, 6, 5);
+        px(ctx, o, 18, 1 + bob, 4, 4);
+        px(ctx, hd, 7, 2 + bob, 3, 4);
+        px(ctx, hd, 12, 1 + bob, 4, 5);
+        px(ctx, hd, 18, 2 + bob, 3, 4);
+        px(ctx, isHurt ? '#ffffff' : '#f87171', 13, 2 + bob, 2, 2); // spike gleam
+        // Crimson headband across forehead
+        px(ctx, o, 7, 5 + bob, 14, 4);
+        px(ctx, tr, 8, 6 + bob, 12, 2);
+        px(ctx, isHurt ? '#ffffff' : '#f59e0b', 13, 6 + bob, 2, 2); // gold headband clasp
+        // Fierce face + glowing eyes
+        px(ctx, sk, 8, 8 + bob, 12, 6);
+        px(ctx, '#090b10', 9, 9 + bob, 4, 2);
+        px(ctx, '#090b10', 15, 9 + bob, 4, 2);
+        px(ctx, ey, 10, 9 + bob, 2, 2);
+        px(ctx, ey, 16, 9 + bob, 2, 2);
+        px(ctx, '#991b1b', 12, 12 + bob, 4, 1); // fierce grimace
+        px(ctx, tr, 8, 13 + bob, 12, 2);
       } else {
         // Soul Knight Vampire: swept dark widow's-peak hair, pale gray face, crisp eyes, crimson collar
         px(ctx, o, 7, 2 + bob, 14, 5);
@@ -671,6 +730,23 @@ export class TextureGenerator {
         // Ruby pendant & pale cravat
         px(ctx, '#e2e8f0', 12, 16 + bob, 4, 4);
         px(ctx, '#ef4444', 13, 17 + bob, 2, 2);
+      } else if (classId === 'engineer') {
+        // Teal-slate coat lapels, brass buttons & chest pocket badge
+        px(ctx, tr, 10, 17 + bob, 1, 1);
+        px(ctx, tr, 10, 19 + bob, 1, 1);
+        px(ctx, ey, 16, 17 + bob, 3, 2);
+      } else if (classId === 'berserker') {
+        // Dark iron chestplate bevel & heavy spiked iron gauntlets
+        px(ctx, isHurt ? '#fecaca' : '#94a3b8', 10, 17 + bob, 8, 1);
+        px(ctx, tr, 13, 18 + bob, 2, 2);
+        px(ctx, o, 3, 15 + bob, 5, 7);
+        px(ctx, '#334155', 4, 16 + bob, 3, 5);
+        px(ctx, '#64748b', 4, 16 + bob, 2, 2);
+        px(ctx, tr, 4, 20 + bob, 3, 1);
+        px(ctx, o, 20, 15 + bob, 5, 7);
+        px(ctx, '#334155', 21, 16 + bob, 3, 5);
+        px(ctx, '#64748b', 22, 16 + bob, 2, 2);
+        px(ctx, tr, 21, 20 + bob, 3, 1);
       }
       // Belt & Emblem clasp
       px(ctx, '#1e293b', 7, 21 + bob, 14, 2);
@@ -741,6 +817,24 @@ export class TextureGenerator {
       trim: '#b91c1c',
       skin: '#cbd5e1'
     };
+    const engineerPalette = {
+      outline: '#090b10',
+      body: '#1e3a4c',
+      bodyHi: '#335c6e',
+      hood: '#0f766e',
+      eye: '#2dd4bf',
+      trim: '#f59e0b',
+      skin: '#fbd3b6'
+    };
+    const berserkerPalette = {
+      outline: '#090b10',
+      body: '#1e293b',
+      bodyHi: '#475569',
+      hood: '#dc2626',
+      eye: '#fef08a',
+      trim: '#ef4444',
+      skin: '#fbd3b6'
+    };
 
     drawHeroSprite('player_idle', 'alchemist', alchemistPalette, 0, false);
     drawHeroSprite('player_run_1', 'alchemist', alchemistPalette, 1, false);
@@ -760,6 +854,8 @@ export class TextureGenerator {
     registerClass('hero_knight', 'knight', knightPalette);
     registerClass('hero_wizard', 'wizard', wizardPalette);
     registerClass('hero_vampire', 'vampire', vampirePalette);
+    registerClass('hero_engineer', 'engineer', engineerPalette);
+    registerClass('hero_berserker', 'berserker', berserkerPalette);
   }
 
   private static createPetFrames(tm: Phaser.Textures.TextureManager): void {
@@ -1296,6 +1392,64 @@ export class TextureGenerator {
     ctx.fillRect(9, 4, 5, 2);
     this.refresh(tm, 'bullet_inferno');
 
+    // Auto-Turret Plasma Bolt (14x8 bright teal-white plasma bolt)
+    ctx = this.createCanvas(tm, 'bullet_turret', 14, 8);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(0, 1, 13, 6);
+    ctx.fillRect(11, 2, 3, 4);
+    ctx.fillStyle = '#0d9488';
+    ctx.fillRect(1, 2, 11, 4);
+    ctx.fillStyle = '#2dd4bf';
+    ctx.fillRect(3, 2, 9, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(6, 3, 6, 2);
+    this.refresh(tm, 'bullet_turret');
+
+    // Alchemist Skill 2 Toxic Green-Cyan Bubbling Sphere (16x16)
+    ctx = this.createCanvas(tm, 'bullet_venom', 16, 16);
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath(); ctx.arc(8, 8, 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#047857';
+    ctx.beginPath(); ctx.arc(8, 8, 6.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath(); ctx.arc(8, 8, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2dd4bf';
+    ctx.beginPath(); ctx.arc(7, 7, 3.2, 0, Math.PI * 2); ctx.fill();
+    // Bubbling toxic specular highlights
+    ctx.fillStyle = '#a7f3d0';
+    ctx.fillRect(5, 4, 2, 2);
+    ctx.fillRect(10, 9, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(5, 4, 1, 1);
+    ctx.fillRect(8, 6, 1, 1);
+    this.refresh(tm, 'bullet_venom');
+
+    // Red-Gold Homing Rocket (18x10)
+    ctx = this.createCanvas(tm, 'bullet_rocket', 18, 10);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(2, 1, 5, 8);
+    ctx.fillRect(3, 2, 12, 6);
+    ctx.fillRect(14, 3, 4, 4);
+    // Thruster tail glow
+    ctx.fillStyle = '#f97316';
+    ctx.fillRect(0, 3, 3, 4);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(1, 4, 2, 2);
+    // Crimson stabilizer fins & hull
+    ctx.fillStyle = '#991b1b';
+    ctx.fillRect(3, 1, 3, 2);
+    ctx.fillRect(3, 7, 3, 2);
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(4, 3, 9, 4);
+    // Gold warhead band & nosecone
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(8, 3, 3, 4);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(13, 3, 3, 4);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(15, 4, 2, 2);
+    this.refresh(tm, 'bullet_rocket');
+
     // Slash Arc
     ctx = this.createCanvas(tm, 'slash_arc', 68, 68);
     ctx.strokeStyle = '#e0f2fe';
@@ -1622,6 +1776,76 @@ export class TextureGenerator {
     ctx.fillStyle = '#22d3ee'; ctx.fillRect(13, 3, 6, 5);
     ctx.fillStyle = '#fef08a'; ctx.fillRect(15, 4, 2, 3);
     this.refresh(tm, 'anvil_merge');
+  }
+
+  private static createTurretFrames(tm: Phaser.Textures.TextureManager): void {
+    // 1. Mechanical Auto-Turret Tripod Base (22x22 bronze/teal tripod base)
+    let ctx = this.createCanvas(tm, 'turret_base', 22, 22);
+    ctx.fillStyle = '#090b10';
+    // Top tripod strut & left/right splayed tripod legs
+    ctx.fillRect(9, 1, 4, 7);
+    ctx.fillRect(2, 13, 6, 7);
+    ctx.fillRect(14, 13, 6, 7);
+    ctx.beginPath(); ctx.arc(11, 11, 7.5, 0, Math.PI * 2); ctx.fill();
+
+    // Bronze mechanical struts & feet
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(10, 2, 2, 5);
+    ctx.fillRect(3, 14, 4, 5);
+    ctx.fillRect(15, 14, 4, 5);
+    ctx.fillStyle = '#d97706';
+    ctx.fillRect(3, 17, 3, 2);
+    ctx.fillRect(16, 17, 3, 2);
+    ctx.fillRect(10, 2, 2, 2);
+
+    // Central bronze mounting ring
+    ctx.fillStyle = '#b45309';
+    ctx.beginPath(); ctx.arc(11, 11, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath(); ctx.arc(11, 10.5, 4.5, 0, Math.PI * 2); ctx.fill();
+
+    // Glowing teal core socket
+    ctx.fillStyle = '#0f766e';
+    ctx.beginPath(); ctx.arc(11, 11, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#14b8a6';
+    ctx.beginPath(); ctx.arc(11, 11, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#99f6e4';
+    ctx.fillRect(10, 10, 2, 2);
+    this.refresh(tm, 'turret_base');
+
+    // 2. Rotating Dual Plasma Turret Barrel (20x12, facing right)
+    ctx = this.createCanvas(tm, 'turret_gun', 20, 12);
+    ctx.fillStyle = '#090b10';
+    ctx.fillRect(1, 1, 10, 10);
+    ctx.fillRect(10, 1, 10, 4);
+    ctx.fillRect(10, 7, 10, 4);
+
+    // Bronze & slate turret receiver housing
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(2, 2, 8, 8);
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(3, 2, 6, 2);
+    ctx.fillRect(3, 8, 6, 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(4, 2, 4, 1);
+
+    // Glowing teal energy cell on housing
+    ctx.fillStyle = '#14b8a6';
+    ctx.fillRect(4, 4, 4, 4);
+    ctx.fillStyle = '#ccfbf1';
+    ctx.fillRect(5, 5, 2, 2);
+
+    // Dual parallel plasma barrels (upper & lower)
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(10, 2, 9, 2);
+    ctx.fillRect(10, 8, 9, 2);
+    ctx.fillStyle = '#14b8a6';
+    ctx.fillRect(12, 2, 4, 2);
+    ctx.fillRect(12, 8, 4, 2);
+    ctx.fillStyle = '#ccfbf1';
+    ctx.fillRect(17, 2, 2, 2);
+    ctx.fillRect(17, 8, 2, 2);
+    this.refresh(tm, 'turret_gun');
   }
 
   private static createIcons(tm: Phaser.Textures.TextureManager): void {

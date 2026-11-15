@@ -1,6 +1,7 @@
 import { WeaponData } from './weapon';
 import { UpgradeData } from './upgrade';
 import { RoomState } from './room';
+import { HeroId, SkillVariant } from '../data/heroes';
 
 export interface GameEvents {
   // Player state
@@ -14,13 +15,15 @@ export interface GameEvents {
   'player:energy-consumed': { currentEnergy: number };
   'player:coins-changed': { coins: number };
   'player:died': void;
+  'player:turret-spawned': { x: number; y: number };
+  'player:skill-status-vortex': { x: number; y: number; radius: number };
 
   // Combat
   'combat:enemy-hit': { enemyId: string; damage: number; isCrit: boolean; x: number; y: number; element?: string };
   'combat:enemy-died': { enemyId: string; x: number; y: number; type: string };
   'combat:bullet-destroyed': { x: number; y: number };
   'combat:boss-stats': { currentHp: number; maxHp: number; phase: number; nameVi: string; isDead: boolean };
-  'combat:explosion': { x: number; y: number; radius: number; damage: number };
+  'combat:explosion': { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' };
   'combat:lightning-arc': { fromX: number; fromY: number; toX: number; toY: number };
 
   // Room & Exploration
@@ -38,7 +41,7 @@ export interface GameEvents {
   'game:pause-toggled': { isPaused: boolean };
   'game:victory': RunResultEventPayload;
   'game:over': RunResultEventPayload;
-  'game:restart': { heroId?: string } | void;
+  'game:restart': { heroId?: HeroId; skillVariant?: SkillVariant } | void;
   'game:return-lobby': void;
 }
 

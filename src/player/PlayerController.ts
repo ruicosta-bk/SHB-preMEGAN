@@ -5,7 +5,8 @@ import { UpgradeId } from '../types/upgrade';
 import { WEAPONS } from '../data/weapons';
 import { findMergeResult } from '../data/merges';
 import { UPGRADES } from '../data/upgrades';
-import { HEROES, HeroConfig, HeroId, shouldResetSkillOnKill } from '../data/heroes';
+import { HEROES, HeroConfig, HeroId, SkillVariant, getHeroSkillMeta, shouldResetSkillOnKill } from '../data/heroes';
+import type { EnemyBase } from '../enemies/EnemyBase';
 import { DamageCalculator } from '../combat/DamageCalculator';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
@@ -74,6 +75,7 @@ export class PlayerController {
   // Hero class state
   public heroId: HeroId;
   public heroConfig: HeroConfig;
+  public skillVariant: SkillVariant;
   private texturePrefix: string;
 
   // Skill state & statue blessing
@@ -83,6 +85,13 @@ export class PlayerController {
   private guaranteedNextCrit: boolean = false;
   private rogueKillWindowTimer: number = 0;
   private dualWieldTimer: number = 0;
+  private overdriveTimer: number = 0;
+  private berserkTimer: number = 0;
+  private fireOrbitTimer: number = 0;
+  private fireOrbitAngle: number = 0;
+  private fireOrbitSprites: Phaser.GameObjects.Sprite[] = [];
+  private fireOrbitHitCooldowns: Map<string, number> = new Map();
+  private skillAuraGfx: Phaser.GameObjects.Graphics | null = null;
   private vampireHealCharges: number = 0;
   private reflectShieldTimer: number = 0;
   private reflectShieldGfx: Phaser.GameObjects.Graphics | null = null;
@@ -118,10 +127,19 @@ export class PlayerController {
   private glideVy: number = 0;
   private lavaTickTimer: number = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, heroId: HeroId = 'alchemist', metaBonuses?: MetaBonuses) {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    heroId: HeroId = 'alchemist',
+    metaBonuses?: MetaBonuses,
+    skillVariant: SkillVariant = 1
+  ) {
     this.scene = scene;
     this.heroId = heroId;
+    this.skillVariant = skillVariant;
     this.heroConfig = HEROES[heroId] || HEROES.alchemist;
+    const skillMeta = getHeroSkillMeta(this.heroId, this.skillVariant);
     this.texturePrefix = this.heroConfig.texturePrefix;
 
     this.stats.maxHp = this.heroConfig.hp;
@@ -132,7 +150,7 @@ export class PlayerController {
     this.stats.energy = this.heroConfig.maxEnergy;
     this.stats.speed = this.heroConfig.speed;
     this.stats.dashCooldown = this.heroConfig.dashCooldown;
-    this.skillCooldownMax = this.heroConfig.skillCooldown;
+    this.skillCooldownMax = skillMeta.cooldown;
 
     if (metaBonuses) {
       this.stats.maxHp += metaBonuses.bonusHp;
@@ -143,7 +161,7 @@ export class PlayerController {
       this.stats.energy += metaBonuses.bonusEnergy;
       this.coins += metaBonuses.startCoins;
       this.stats.dashCooldown = Math.max(0.4, Number((this.stats.dashCooldown * metaBonuses.cooldownMult).toFixed(2)));
-      this.skillCooldownMax = Math.max(1.5, Number((this.skillCooldownMax * metaBonuses.cooldownMult).toFixed(2)));
+      this.skillCooldownMax = Math.max(1.5, Number((skillMeta.cooldown * metaBonuses.cooldownMult).toFixed(2)));
     }
 
     const starterWeapon = WEAPONS[this.heroConfig.startWeapon];
@@ -185,7 +203,7 @@ export class PlayerController {
 
     // Notify initial state
     events.emit('player:hero-selected', {
-      skillShortLabelVi: this.heroConfig.skillShortLabelVi,
+      skillShortLabelVi: skillMeta.shortLabelVi,
       accentHex: this.heroConfig.accentHex,
       accentColor: this.heroConfig.accentColor
     });
@@ -374,6 +392,15 @@ export class PlayerController {
     this.bowChargeGfx?.clear();
     this.frostSlowTimer = 0;
     this.dualWieldTimer = 0;
+    this.overdriveTimer = 0;
+    this.berserkTimer = 0;
+    this.fireOrbitTimer = 0;
+    this.reflectShieldTimer = 0;
+    this.rogueKillWindowTimer = 0;
+    this.guaranteedNextCrit = false;
+    this.reflectShieldGfx?.clear();
+    this.skillAuraGfx?.clear();
+    this.clearFireOrbitSprites();
     this.offhandWeaponSprite?.setVisible(false);
     this.offhandMuzzleFlashSprite?.setVisible(false);
     this.isOnIce = false;
@@ -389,7 +416,33 @@ export class PlayerController {
 
   public applyFrostSlow(duration: number = 1.2): void {
     this.frostSlowTimer = Math.max(this.frostSlowTimer, duration);
-    this.sprite.setTint(0x7dd3fc);
+    this.refreshActiveTint();
+  }
+
+  private refreshActiveTint(): void {
+    if (this.isDead) {
+      this.sprite.setTint(0xef4444);
+      return;
+    }
+    if (this.frostSlowTimer > 0) {
+      this.sprite.setTint(0x7dd3fc);
+    } else if (this.berserkTimer > 0) {
+      this.sprite.setTint(0xfca5a5);
+    } else if (this.overdriveTimer > 0) {
+      this.sprite.setTint(0xfde68a);
+    } else if (this.dualWieldTimer > 0) {
+      this.sprite.setTint(0xfdba74);
+    } else {
+      this.sprite.clearTint();
+    }
+  }
+
+  private clearFireOrbitSprites(): void {
+    for (const s of this.fireOrbitSprites) {
+      s.destroy();
+    }
+    this.fireOrbitSprites = [];
+    this.fireOrbitHitCooldowns.clear();
   }
 
   public takeDamage(damage: DamageInfo): DamageResult | null {
@@ -436,7 +489,8 @@ export class PlayerController {
     pointer: Phaser.Input.Pointer,
     pool: ProjectilePool,
     wallColliders: { x: number; y: number; width: number; height: number }[],
-    doorColliders: { x: number; y: number; width: number; height: number }[]
+    doorColliders: { x: number; y: number; width: number; height: number }[],
+    enemies: EnemyBase[] = []
   ): void {
     if (this.isDead) return;
 
@@ -457,15 +511,48 @@ export class PlayerController {
     }
     if (this.dualWieldTimer > 0) {
       this.dualWieldTimer -= deltaSec;
-      if (this.dualWieldTimer <= 0 && this.frostSlowTimer <= 0 && !this.isDead) {
-        this.sprite.clearTint();
+      if (this.dualWieldTimer <= 0) {
+        this.refreshActiveTint();
+      }
+    }
+    if (this.overdriveTimer > 0) {
+      this.overdriveTimer -= deltaSec;
+      if (this.overdriveTimer <= 0) {
+        this.refreshActiveTint();
+      }
+    }
+    if (this.berserkTimer > 0) {
+      this.berserkTimer -= deltaSec;
+      if (this.berserkTimer <= 0) {
+        this.refreshActiveTint();
       }
     }
     if (this.frostSlowTimer > 0) {
       this.frostSlowTimer -= deltaSec;
-      if (this.frostSlowTimer <= 0 && !this.isDead) {
-        this.sprite.clearTint();
+      if (this.frostSlowTimer <= 0) {
+        this.refreshActiveTint();
       }
+    }
+    if (this.overdriveTimer > 0 || this.berserkTimer > 0) {
+      if (!this.skillAuraGfx) {
+        this.skillAuraGfx = this.scene.add.graphics().setDepth(9);
+      }
+      const auraColor = this.berserkTimer > 0 ? 0xe11d48 : 0xf97316;
+      const innerColor = 0xfacc15;
+      const pulse = 21 + Math.sin(this.bobTimer * 1.4) * 3;
+      this.skillAuraGfx.clear();
+      this.skillAuraGfx.lineStyle(2.5, auraColor, 0.85);
+      this.skillAuraGfx.fillStyle(innerColor, 0.14);
+      this.skillAuraGfx.fillCircle(this.sprite.x, this.sprite.y + 2, pulse);
+      this.skillAuraGfx.strokeCircle(this.sprite.x, this.sprite.y + 2, pulse);
+    } else if (this.skillAuraGfx) {
+      this.skillAuraGfx.clear();
+    }
+    if (this.fireOrbitTimer > 0) {
+      this.fireOrbitTimer -= deltaSec;
+      this.updateFireOrbit(deltaSec, pool, enemies);
+    } else if (this.fireOrbitSprites.length > 0) {
+      this.clearFireOrbitSprites();
     }
     if (this.reflectShieldTimer > 0) {
       this.reflectShieldTimer -= deltaSec;
@@ -800,28 +887,33 @@ export class PlayerController {
   ): void {
     const weapon = this.getCurrentWeapon();
 
-    // Check energy cost
-    if (weapon.energyCost > 0) {
-      if (!DamageCalculator.consumeEnergy(this.stats, weapon.energyCost)) {
+    // Check energy cost (free during Knight Rapid Overdrive)
+    const effectiveEnergyCost = this.overdriveTimer > 0 ? 0 : weapon.energyCost;
+    if (effectiveEnergyCost > 0) {
+      if (!DamageCalculator.consumeEnergy(this.stats, effectiveEnergyCost)) {
         // Can't afford energy, fail silently or fallback to pistol
         return;
       }
       this.emitStats();
     }
 
-    this.shootCooldownRemaining = 1 / (weapon.fireRate * this.fireRateBonus);
+    const activeFireRateMult =
+      (this.overdriveTimer > 0 ? 1.7 : 1.0) *
+      (this.berserkTimer > 0 ? 1.75 : 1.0);
+    this.shootCooldownRemaining = 1 / (weapon.fireRate * this.fireRateBonus * activeFireRateMult);
 
     // Critical focus upgrade or Rogue guaranteed crit
     const isCrit = this.guaranteedNextCrit || (this.upgrades.has('critical_focus') && Math.random() < 0.25);
     this.guaranteedNextCrit = false;
     const forgeMult = 1 + this.getForgeLevel(weapon.id) * 0.25;
     const damageMultiplier = (isCrit ? 2.0 : 1.0) * forgeMult;
+    const berserkBonusDamage = this.berserkTimer > 0 ? 3 : 0;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
     const extraBounce = this.upgrades.has('ricochet') ? 1 : 0;
 
     // Continuous Beam Laser attack
     if (weapon.category === 'beam') {
-      this.fireLaserBeam(aimAngle, weapon.damage * damageMultiplier, weapon.range, isCrit, solidColliders);
+      this.fireLaserBeam(aimAngle, weapon.damage * damageMultiplier + berserkBonusDamage, weapon.range, isCrit, solidColliders);
       return;
     }
 
@@ -872,7 +964,7 @@ export class PlayerController {
         angle: aimAngle,
         radius,
         arcDeg: arcDegrees,
-        damage: (weapon.damage + bladeBonus) * damageMultiplier,
+        damage: (weapon.damage + bladeBonus) * damageMultiplier + berserkBonusDamage,
         isCrit,
         element: weapon.appliesChill ? 'frost' : undefined
       });
@@ -890,7 +982,7 @@ export class PlayerController {
               y: this.sprite.y + Math.sin(aimAngle) * 20 + pyOff,
               angleRad: bulletAngle,
               speed: 460,
-              damage: Math.max(1, Math.round(5 * damageMultiplier * dmgScale)),
+              damage: Math.max(1, Math.round((5 * damageMultiplier + berserkBonusDamage) * dmgScale)),
               isPlayer: true,
               isCrit,
               element: 'frost',
@@ -944,7 +1036,7 @@ export class PlayerController {
     }
 
     // Spawn pellets (shotgun_plus grants +2 extra pellets, Knight Dual-Wield fires a parallel twin volley)
-    const baseDamage = weapon.damage * damageMultiplier;
+    const baseDamage = weapon.damage * damageMultiplier + berserkBonusDamage;
     const extraPellets = weapon.pellets > 1 && this.upgrades.has('shotgun_plus') ? 2 : 0;
     const totalPellets = weapon.pellets + extraPellets;
     const spreadRad = Phaser.Math.DegToRad(weapon.spreadAngle);
@@ -989,7 +1081,7 @@ export class PlayerController {
           range: weapon.range,
           pierceCount: weapon.pierceCount + extraPierce,
           bounceCount: weapon.bounceCount + extraBounce,
-          tint: isCrit ? 0xff0055 : undefined
+          tint: isCrit ? 0xff0055 : this.berserkTimer > 0 ? 0xfb7185 : undefined
         });
       }
     };
@@ -1004,13 +1096,17 @@ export class PlayerController {
 
   private fireBowArrow(aimAngle: number, pool: ProjectilePool, chargeRatio: number): void {
     const weapon = WEAPONS.bow;
-    if (weapon.energyCost > 0) {
-      if (!DamageCalculator.consumeEnergy(this.stats, weapon.energyCost)) {
+    const effectiveEnergyCost = this.overdriveTimer > 0 ? 0 : weapon.energyCost;
+    if (effectiveEnergyCost > 0) {
+      if (!DamageCalculator.consumeEnergy(this.stats, effectiveEnergyCost)) {
         return;
       }
       this.emitStats();
     }
-    this.shootCooldownRemaining = 0.18;
+    const activeFireRateMult =
+      (this.overdriveTimer > 0 ? 1.7 : 1.0) *
+      (this.berserkTimer > 0 ? 1.75 : 1.0);
+    this.shootCooldownRemaining = 0.18 / activeFireRateMult;
     const isCrit =
       chargeRatio >= 0.85 ||
       this.guaranteedNextCrit ||
@@ -1018,6 +1114,7 @@ export class PlayerController {
     this.guaranteedNextCrit = false;
     const extraPierce = this.upgrades.has('piercing_rounds') ? 1 : 0;
     const forgeMult = 1 + this.getForgeLevel(weapon.id) * 0.25;
+    const berserkBonusDamage = this.berserkTimer > 0 ? 3 : 0;
 
     this.weaponRecoilOffset = 5;
     audio.playShootPenetrator();
@@ -1027,7 +1124,7 @@ export class PlayerController {
       y: this.sprite.y + Math.sin(aimAngle) * 18,
       angleRad: aimAngle,
       speed: weapon.bulletSpeed * (0.65 + 0.45 * chargeRatio),
-      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0) * forgeMult)),
+      damage: Math.max(4, Math.round(weapon.damage * chargeRatio * (isCrit ? 1.5 : 1.0) * forgeMult) + berserkBonusDamage),
       isPlayer: true,
       isCrit,
       texture: weapon.bulletTexture,
@@ -1118,24 +1215,76 @@ export class PlayerController {
     }
   }
 
+  private startSkillCooldown(): void {
+    this.skillCooldownRemaining = this.skillCooldownMax;
+    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+  }
+
   private useSkill(
     pointer: Phaser.Input.Pointer,
     pool: ProjectilePool,
     wallColliders: { x: number; y: number; width: number; height: number }[],
     doorColliders: { x: number; y: number; width: number; height: number }[]
   ): void {
-    if (this.heroId === 'rogue') {
-      this.useRogueShadowSlash(pointer, wallColliders, doorColliders);
-    } else if (this.heroId === 'vanguard') {
-      this.useVanguardReflectShield();
-    } else if (this.heroId === 'knight') {
-      this.useKnightDualWield();
-    } else if (this.heroId === 'wizard') {
-      this.useWizardFrostStorm(pointer, pool);
-    } else if (this.heroId === 'vampire') {
-      this.useVampireBatSwarm(pointer, pool);
-    } else {
-      this.useAlchemicalFlask(pointer, pool);
+    const isVariant2 = this.skillVariant === 2;
+    switch (this.heroId) {
+      case 'rogue':
+        if (isVariant2) {
+          this.useRoguePhantomBlink(pointer, pool, wallColliders, doorColliders);
+        } else {
+          this.useRogueShadowSlash(pointer, wallColliders, doorColliders);
+        }
+        break;
+      case 'vanguard':
+        if (isVariant2) {
+          this.useVanguardSeismicSlam();
+        } else {
+          this.useVanguardReflectShield();
+        }
+        break;
+      case 'knight':
+        if (isVariant2) {
+          this.useKnightRapidOverdrive();
+        } else {
+          this.useKnightDualWield();
+        }
+        break;
+      case 'wizard':
+        if (isVariant2) {
+          this.useWizardFireOrbit();
+        } else {
+          this.useWizardFrostStorm(pointer, pool);
+        }
+        break;
+      case 'vampire':
+        if (isVariant2) {
+          this.useVampireDarkVortex(pointer);
+        } else {
+          this.useVampireBatSwarm(pointer, pool);
+        }
+        break;
+      case 'engineer':
+        if (isVariant2) {
+          this.useEngineerMicroRockets(pointer, pool);
+        } else {
+          this.useEngineerDeployTurret();
+        }
+        break;
+      case 'berserker':
+        if (isVariant2) {
+          this.useBerserkerLeapSlam(pointer, pool, wallColliders, doorColliders);
+        } else {
+          this.useBerserkerFury();
+        }
+        break;
+      case 'alchemist':
+      default:
+        if (isVariant2) {
+          this.useAlchemicalVenomFlask(pointer, pool);
+        } else {
+          this.useAlchemicalFlask(pointer, pool);
+        }
+        break;
     }
     this.triggerStatueBlessing(pointer, pool);
   }
@@ -1151,14 +1300,23 @@ export class PlayerController {
   }
 
   public useKnightDualWield(): void {
-    this.skillCooldownRemaining = this.skillCooldownMax;
-    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.startSkillCooldown();
     this.dualWieldTimer = 4.0;
-    this.sprite.setTint(0xfdba74);
+    this.refreshActiveTint();
     audio.playPickup();
 
     const ring = this.scene.add.circle(this.sprite.x, this.sprite.y, 26, 0xf97316, 0.3).setDepth(13);
     this.scene.tweens.add({ targets: ring, scale: 1.5, alpha: 0, duration: 240, onComplete: () => ring.destroy() });
+  }
+
+  public useKnightRapidOverdrive(): void {
+    this.startSkillCooldown();
+    this.overdriveTimer = 3.5;
+    this.refreshActiveTint();
+    audio.playPickup();
+
+    const ring = this.scene.add.circle(this.sprite.x, this.sprite.y, 28, 0xf59e0b, 0.35).setDepth(13);
+    this.scene.tweens.add({ targets: ring, scale: 1.65, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
   }
 
   public useWizardFrostStorm(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
@@ -1186,6 +1344,63 @@ export class PlayerController {
     });
   }
 
+  public useWizardFireOrbit(): void {
+    this.startSkillCooldown();
+    this.fireOrbitTimer = 4.5;
+    this.fireOrbitHitCooldowns.clear();
+    audio.playExplosion();
+
+    if (this.fireOrbitSprites.length === 0) {
+      for (let i = 0; i < 4; i++) {
+        const orb = this.scene.add.sprite(this.sprite.x, this.sprite.y, 'bullet_fireball').setDepth(14).setScale(1.2);
+        this.fireOrbitSprites.push(orb);
+      }
+    }
+  }
+
+  private updateFireOrbit(deltaSec: number, pool: ProjectilePool, enemies: EnemyBase[]): void {
+    if (this.fireOrbitTimer <= 0) {
+      this.clearFireOrbitSprites();
+      return;
+    }
+
+    for (const [id, cd] of this.fireOrbitHitCooldowns.entries()) {
+      const next = cd - deltaSec;
+      if (next <= 0) {
+        this.fireOrbitHitCooldowns.delete(id);
+      } else {
+        this.fireOrbitHitCooldowns.set(id, next);
+      }
+    }
+
+    this.fireOrbitAngle += deltaSec * 4.5;
+    const orbitRadius = 44;
+
+    for (let i = 0; i < this.fireOrbitSprites.length; i++) {
+      const orb = this.fireOrbitSprites[i];
+      const ang = this.fireOrbitAngle + (i * Math.PI) / 2;
+      const fx = this.sprite.x + Math.cos(ang) * orbitRadius;
+      const fy = this.sprite.y + Math.sin(ang) * orbitRadius;
+      orb.setPosition(fx, fy);
+      orb.setRotation(ang + Math.PI / 2);
+
+      pool.destroyEnemyBulletsInRadius(fx, fy, 18);
+
+      for (const enemy of enemies) {
+        if (enemy.isDead || (this.fireOrbitHitCooldowns.get(enemy.id) ?? 0) > 0) continue;
+        if (Math.hypot(enemy.sprite.x - fx, enemy.sprite.y - fy) < 22) {
+          this.fireOrbitHitCooldowns.set(enemy.id, 0.35);
+          enemy.takeDamage({
+            amount: 5,
+            isCrit: false,
+            element: 'fire',
+            isPlayerAttack: true
+          });
+        }
+      }
+    }
+  }
+
   public useVampireBatSwarm(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
     this.skillCooldownRemaining = this.skillCooldownMax;
     events.emit('player:skill-cooldown', { progress: 0, isReady: false });
@@ -1209,6 +1424,93 @@ export class PlayerController {
         range: 540
       });
     }
+  }
+
+  public useVampireDarkVortex(pointer: Phaser.Input.Pointer): void {
+    this.startSkillCooldown();
+    const vx = Number.isFinite(pointer.worldX) ? pointer.worldX : this.sprite.x;
+    const vy = Number.isFinite(pointer.worldY) ? pointer.worldY : this.sprite.y;
+    audio.playChainLightning();
+    events.emit('player:skill-status-vortex', { x: vx, y: vy, radius: 120 });
+  }
+
+  public useEngineerDeployTurret(): void {
+    this.startSkillCooldown();
+    audio.playTurretDeploy();
+    events.emit('player:turret-spawned', { x: this.sprite.x, y: this.sprite.y });
+  }
+
+  public useEngineerMicroRockets(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
+    this.startSkillCooldown();
+    audio.playExplosion();
+    const baseAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+    for (const off of [-0.42, -0.14, 0.14, 0.42]) {
+      const ang = baseAngle + off;
+      pool.spawn({
+        x: this.sprite.x + Math.cos(ang) * 18,
+        y: this.sprite.y + Math.sin(ang) * 18,
+        angleRad: ang,
+        speed: 360,
+        damage: 8,
+        isPlayer: true,
+        isCrit: false,
+        isHoming: true,
+        element: 'fire',
+        texture: 'bullet_rocket',
+        range: 520
+      });
+    }
+  }
+
+  public useBerserkerFury(): void {
+    this.startSkillCooldown();
+    this.berserkTimer = 3.5;
+    this.refreshActiveTint();
+    audio.playBerserkRoar();
+
+    const ring = this.scene.add.circle(this.sprite.x, this.sprite.y, 30, 0xe11d48, 0.35).setDepth(13);
+    this.scene.tweens.add({ targets: ring, scale: 1.75, alpha: 0, duration: 280, onComplete: () => ring.destroy() });
+  }
+
+  public useBerserkerLeapSlam(
+    pointer: Phaser.Input.Pointer,
+    pool: ProjectilePool,
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    doorColliders: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    this.startSkillCooldown();
+    const aimAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+    this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.35);
+    audio.playDash();
+
+    this.stepMoveSafely(aimAngle, 110, 5, wallColliders, doorColliders, 0xe11d48);
+
+    audio.playExplosion();
+    this.scene.cameras.main.shake(220, 0.015);
+    pool.destroyEnemyBulletsInRadius(this.sprite.x, this.sprite.y, 95);
+
+    const slam = this.scene.add.graphics().setDepth(19);
+    slam.fillStyle(0xe11d48, 0.42);
+    slam.fillCircle(this.sprite.x, this.sprite.y, 95);
+    slam.lineStyle(3, 0xfacc15, 0.95);
+    slam.strokeCircle(this.sprite.x, this.sprite.y, 95);
+    this.scene.tweens.add({
+      targets: slam,
+      alpha: 0,
+      scaleX: 1.2,
+      scaleY: 1.2,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+      onComplete: () => slam.destroy()
+    });
+
+    events.emit('combat:explosion', {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      radius: 95,
+      damage: 18,
+      element: 'physical'
+    });
   }
 
   private triggerStatueBlessing(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
@@ -1250,16 +1552,49 @@ export class PlayerController {
     }
   }
 
+  private stepMoveSafely(
+    angleRad: number,
+    maxDistancePx: number,
+    stepPx: number,
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    doorColliders: { x: number; y: number; width: number; height: number }[],
+    ghostTint?: number
+  ): void {
+    const pBounds = { width: 18, height: 20 };
+    const steps = Math.max(1, Math.floor(maxDistancePx / stepPx));
+    const dx = Math.cos(angleRad) * stepPx;
+    const dy = Math.sin(angleRad) * stepPx;
+
+    for (let step = 0; step < steps; step++) {
+      const nx = this.sprite.x + dx;
+      const ny = this.sprite.y + dy;
+      let moved = false;
+      if (!this.checkCollides(nx, this.sprite.y, pBounds, wallColliders, doorColliders)) {
+        this.sprite.x = nx;
+        moved = true;
+      }
+      if (!this.checkCollides(this.sprite.x, ny, pBounds, wallColliders, doorColliders)) {
+        this.sprite.y = ny;
+        moved = true;
+      }
+      if (ghostTint !== undefined && step % 3 === 0) {
+        this.createDashGhost(ghostTint);
+      }
+      if (!moved) break;
+    }
+
+    this.ensureUnstuck(pBounds, wallColliders, doorColliders);
+    this.shadow.setPosition(this.sprite.x, this.sprite.y + 11);
+  }
+
   public useRogueShadowSlash(
     pointer: Phaser.Input.Pointer,
     wallColliders: { x: number; y: number; width: number; height: number }[],
     doorColliders: { x: number; y: number; width: number; height: number }[]
   ): void {
-    this.skillCooldownRemaining = this.skillCooldownMax;
-    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.startSkillCooldown();
 
     const aimAngle = Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
-    const pBounds = { width: 18, height: 20 };
 
     this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.4);
     this.guaranteedNextCrit = true;
@@ -1268,17 +1603,7 @@ export class PlayerController {
     audio.playSlash();
 
     // Dash step up to 112px cleanly without clipping through walls
-    for (let step = 0; step < 14; step++) {
-      const nx = this.sprite.x + Math.cos(aimAngle) * 8;
-      const ny = this.sprite.y + Math.sin(aimAngle) * 8;
-      if (step % 3 === 0) this.createDashGhost(0xf43f5e);
-      if (!this.checkCollides(nx, this.sprite.y, pBounds, wallColliders, doorColliders)) {
-        this.sprite.x = nx;
-      }
-      if (!this.checkCollides(this.sprite.x, ny, pBounds, wallColliders, doorColliders)) {
-        this.sprite.y = ny;
-      }
-    }
+    this.stepMoveSafely(aimAngle, 112, 8, wallColliders, doorColliders, 0xf43f5e);
 
     if (this.slashSprite) {
       this.slashSprite.setPosition(
@@ -1301,16 +1626,86 @@ export class PlayerController {
     });
   }
 
+  public useRoguePhantomBlink(
+    pointer: Phaser.Input.Pointer,
+    pool: ProjectilePool,
+    wallColliders: { x: number; y: number; width: number; height: number }[],
+    doorColliders: { x: number; y: number; width: number; height: number }[]
+  ): void {
+    this.startSkillCooldown();
+
+    let moveDx = 0;
+    let moveDy = 0;
+    if (this.keys.w.isDown || this.keys.up.isDown) moveDy -= 1;
+    if (this.keys.s.isDown || this.keys.down.isDown) moveDy += 1;
+    if (this.keys.a.isDown || this.keys.left.isDown) moveDx -= 1;
+    if (this.keys.d.isDown || this.keys.right.isDown) moveDx += 1;
+
+    const blinkAngle =
+      moveDx !== 0 || moveDy !== 0
+        ? Math.atan2(moveDy, moveDx)
+        : Math.atan2(pointer.worldY - this.sprite.y, pointer.worldX - this.sprite.x);
+
+    this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.45);
+    this.createDashGhost(0xf43f5e);
+    audio.playDash();
+
+    this.stepMoveSafely(blinkAngle, 130, 5, wallColliders, doorColliders, 0xf43f5e);
+    this.createDashGhost(0xc084fc);
+
+    pool.destroyEnemyBulletsInRadius(this.sprite.x, this.sprite.y, 65);
+    audio.playParryBullet();
+
+    const ring = this.scene.add.circle(this.sprite.x, this.sprite.y, 65, 0xf43f5e, 0.28).setDepth(13);
+    this.scene.tweens.add({ targets: ring, alpha: 0, scale: 1.2, duration: 220, onComplete: () => ring.destroy() });
+  }
+
   public useVanguardReflectShield(): void {
-    this.skillCooldownRemaining = this.skillCooldownMax;
-    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.startSkillCooldown();
     this.reflectShieldTimer = 3.0;
     audio.playParryBullet();
   }
 
+  public useVanguardSeismicSlam(): void {
+    this.startSkillCooldown();
+
+    const prevArmor = this.stats.armor;
+    this.stats.armor = Math.min(this.stats.maxArmor, this.stats.armor + 2);
+    const armorGain = this.stats.armor - prevArmor;
+    if (armorGain > 0) {
+      events.emit('player:healed', { hpGain: 0, armorGain });
+    }
+    this.emitStats();
+
+    audio.playExplosion();
+    this.scene.cameras.main.shake(180, 0.012);
+
+    const ring = this.scene.add.graphics().setDepth(19);
+    ring.fillStyle(0xfacc15, 0.35);
+    ring.fillCircle(this.sprite.x, this.sprite.y, 90);
+    ring.lineStyle(3, 0xfef08a, 0.95);
+    ring.strokeCircle(this.sprite.x, this.sprite.y, 90);
+    this.scene.tweens.add({
+      targets: ring,
+      alpha: 0,
+      scaleX: 1.2,
+      scaleY: 1.2,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    events.emit('combat:explosion', {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      radius: 90,
+      damage: 12,
+      element: 'physical'
+    });
+  }
+
   public useAlchemicalFlask(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
-    this.skillCooldownRemaining = this.skillCooldownMax;
-    events.emit('player:skill-cooldown', { progress: 0, isReady: false });
+    this.startSkillCooldown();
 
     audio.playGlassBreak();
     const targetX = pointer.worldX;
@@ -1353,6 +1748,70 @@ export class PlayerController {
 
         // Emit explosion event (rebalanced Alchemist flask damage)
         events.emit('combat:explosion', { x: targetX, y: targetY, radius: 80, damage: 14 });
+      }
+    });
+  }
+
+  public useAlchemicalVenomFlask(pointer: Phaser.Input.Pointer, pool: ProjectilePool): void {
+    this.startSkillCooldown();
+
+    audio.playGlassBreak();
+    const targetX = pointer.worldX;
+    const targetY = pointer.worldY;
+    const startX = this.sprite.x;
+    const startY = this.sprite.y;
+
+    const flask = this.scene.add.sprite(startX, startY, 'bullet_venom').setDepth(16).setScale(1.2);
+    this.scene.tweens.add({
+      targets: flask,
+      x: targetX,
+      y: targetY,
+      rotation: Math.PI * 4,
+      duration: 300,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        flask.destroy();
+        audio.playExplosion();
+        this.scene.cameras.main.shake(200, 0.013);
+
+        pool.destroyEnemyBulletsInRadius(targetX, targetY, 95);
+
+        const cloud = this.scene.add.graphics().setDepth(20);
+        cloud.fillStyle(0x10b981, 0.48);
+        cloud.fillCircle(targetX, targetY, 95);
+        cloud.lineStyle(3, 0x22d3ee, 0.95);
+        cloud.strokeCircle(targetX, targetY, 95);
+        this.scene.tweens.add({
+          targets: cloud,
+          alpha: 0,
+          scaleX: 1.25,
+          scaleY: 1.25,
+          duration: 420,
+          ease: 'Cubic.easeOut',
+          onComplete: () => cloud.destroy()
+        });
+
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + Math.random() * 0.3;
+          const dist = 25 + Math.random() * 55;
+          const color = i % 2 === 0 ? 0x22d3ee : 0x34d399;
+          const puff = this.scene.add.circle(targetX, targetY, 6 + Math.random() * 5, color, 0.75).setDepth(20);
+          this.scene.tweens.add({
+            targets: puff,
+            x: targetX + Math.cos(ang) * dist,
+            y: targetY + Math.sin(ang) * dist,
+            alpha: 0,
+            scale: 1.8,
+            duration: 380 + Math.random() * 140,
+            onComplete: () => puff.destroy()
+          });
+        }
+
+        if (this.effects) {
+          this.effects.spawnHitSparks(targetX, targetY, 0x22d3ee, 10);
+        }
+
+        events.emit('combat:explosion', { x: targetX, y: targetY, radius: 95, damage: 16, element: 'frost' });
       }
     });
   }
@@ -1426,5 +1885,10 @@ export class PlayerController {
     if (this.slashSprite) this.slashSprite.destroy();
     if (this.reflectShieldGfx) this.reflectShieldGfx.destroy();
     if (this.bowChargeGfx) this.bowChargeGfx.destroy();
+    if (this.skillAuraGfx) {
+      this.skillAuraGfx.destroy();
+      this.skillAuraGfx = null;
+    }
+    this.clearFireOrbitSprites();
   }
 }

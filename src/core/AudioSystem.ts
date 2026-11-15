@@ -567,6 +567,106 @@ export class AudioSystem {
     this.registerVoice(400);
   }
 
+  public playTurretDeploy(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    // Mechanical servo ramp
+    const servoOsc = ctx.createOscillator();
+    const servoGain = ctx.createGain();
+    servoOsc.type = 'triangle';
+    servoOsc.frequency.setValueAtTime(190, now);
+    servoOsc.frequency.exponentialRampToValueAtTime(440, now + 0.1);
+    servoGain.gain.setValueAtTime(0.32, now);
+    servoGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    servoOsc.connect(servoGain);
+    servoGain.connect(this.masterGain!);
+    servoOsc.start(now);
+    servoOsc.stop(now + 0.11);
+
+    // Dual metallic lock chime
+    const lockNotes = [880, 1318.51];
+    lockNotes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = now + 0.085 + idx * 0.045;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    });
+
+    this.playNoise(0.06, 0.24, 1600, 'bandpass');
+    this.registerVoice(240);
+  }
+
+  public playTurretShoot(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1180, now);
+    osc.frequency.exponentialRampToValueAtTime(340, now + 0.065);
+
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+
+    osc.start(now);
+    osc.stop(now + 0.065);
+    this.registerVoice(70);
+  }
+
+  public playBerserkRoar(): void {
+    if (!this.canPlayVoice()) return;
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(380, now);
+    filter.frequency.exponentialRampToValueAtTime(1750, now + 0.12);
+    filter.frequency.exponentialRampToValueAtTime(620, now + 0.36);
+
+    const masterSurge = ctx.createGain();
+    masterSurge.gain.setValueAtTime(0.55, now);
+    masterSurge.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+    filter.connect(masterSurge);
+    masterSurge.connect(this.masterGain!);
+
+    const lowOsc = ctx.createOscillator();
+    lowOsc.type = 'sawtooth';
+    lowOsc.frequency.setValueAtTime(92, now);
+    lowOsc.frequency.linearRampToValueAtTime(155, now + 0.14);
+    lowOsc.frequency.exponentialRampToValueAtTime(72, now + 0.36);
+    lowOsc.connect(filter);
+    lowOsc.start(now);
+    lowOsc.stop(now + 0.37);
+
+    const brassOsc = ctx.createOscillator();
+    brassOsc.type = 'sawtooth';
+    brassOsc.frequency.setValueAtTime(184, now);
+    brassOsc.frequency.linearRampToValueAtTime(310, now + 0.14);
+    brassOsc.frequency.exponentialRampToValueAtTime(144, now + 0.36);
+    brassOsc.connect(filter);
+    brassOsc.start(now);
+    brassOsc.stop(now + 0.37);
+
+    this.playNoise(0.24, 0.38, 520, 'lowpass');
+    this.registerVoice(380);
+  }
+
   private playNoise(duration: number, volume: number, filterFreq: number, filterType: BiquadFilterType): void {
     if (!this.ctx || !this.masterGain) return;
     const ctx = this.ctx;

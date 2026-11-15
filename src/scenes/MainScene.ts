@@ -5,7 +5,8 @@ import { DungeonGenerator } from '../world/DungeonGenerator';
 import { RoomManager, PickupItem } from '../world/RoomManager';
 import { PlayerController } from '../player/PlayerController';
 import { PetController } from '../player/PetController';
-import { HeroId } from '../data/heroes';
+import { TurretEntity } from '../player/TurretEntity';
+import { HeroId, SkillVariant } from '../data/heroes';
 import { getFloorMeta, TOTAL_FLOORS } from '../data/biomes';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { StatusManager } from '../combat/StatusManager';
@@ -28,6 +29,8 @@ export class MainScene extends Phaser.Scene {
 
   // Game state
   private currentHeroId: HeroId = 'alchemist';
+  private currentSkillVariant: SkillVariant = 1;
+  private turrets: TurretEntity[] = [];
   private isGameRunning: boolean = false;
   private isPaused: boolean = false;
   private seed: number = 1000;
@@ -206,8 +209,10 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
-    events.on('combat:explosion', (data: { x: number; y: number; radius: number; damage: number }) => {
+    events.on('combat:explosion', (data: { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' }) => {
       if (!this.roomManager) return;
+
+      const element = data.element ?? 'fire';
 
       // 1. Damage all active enemies in blast radius
       for (const enemy of this.roomManager.activeEnemies) {
@@ -221,11 +226,15 @@ export class MainScene extends Phaser.Scene {
           enemy.takeDamage({
             amount: data.damage,
             isCrit: true,
-            element: 'fire',
-            knockback: { x: dx / len, y: dy / len, force: 280 },
+            element,
+            knockback: { x: dx / len, y: dy / len, force: element === 'frost' ? 240 : 280 },
             isPlayerAttack: true
           });
-          StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
+          if (element === 'fire') {
+            StatusManager.applyStatus(enemy as any, 'burn', 3.0, 3, 0.5);
+          } else if (element === 'frost') {
+            StatusManager.applyStatus(enemy as any, 'freeze', 3.0, 0, 1.0, 0.45);
+          }
         }
       }
 
@@ -296,17 +305,77 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
+    events.on('player:turret-spawned', (data: { x: number; y: number }) => {
+      if (!this.isGameRunning) return;
+      while (this.turrets.length >= 2) {
+        const oldest = this.turrets.shift();
+        oldest?.destroy();
+      }
+      this.turrets.push(new TurretEntity(this, data.x, data.y, 8.5));
+    });
+
+    events.on('player:skill-status-vortex', (data: { x: number; y: number; radius: number }) => {
+      if (!this.roomManager) return;
+
+      let hitCount = 0;
+      for (const enemy of this.roomManager.activeEnemies) {
+        if (enemy.isDead) continue;
+        const dx = data.x - enemy.sprite.x;
+        const dy = data.y - enemy.sprite.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= data.radius) {
+          hitCount++;
+          const len = dist || 1;
+          enemy.takeDamage({
+            amount: 12,
+            isCrit: false,
+            knockback: { x: dx / len, y: dy / len, force: 220 },
+            isPlayerAttack: true
+          });
+        }
+      }
+
+      if (this.player) {
+        this.player.heal(hitCount > 0 ? 1 : 0, 30);
+      }
+
+      const vortexGfx = this.add.graphics().setDepth(19);
+      vortexGfx.fillStyle(0x7e22ce, 0.28);
+      vortexGfx.fillCircle(data.x, data.y, data.radius);
+      vortexGfx.lineStyle(3, 0xa855f7, 0.95);
+      vortexGfx.strokeCircle(data.x, data.y, data.radius);
+      vortexGfx.lineStyle(2, 0xdc2626, 0.9);
+      vortexGfx.strokeCircle(data.x, data.y, data.radius * 0.55);
+
+      this.tweens.add({
+        targets: vortexGfx,
+        alpha: 0,
+        scaleX: 0.35,
+        scaleY: 0.35,
+        duration: 360,
+        ease: 'Cubic.easeIn',
+        onComplete: () => vortexGfx.destroy()
+      });
+    });
+
     events.on('player:died', () => {
       this.handleGameOver(false);
     });
 
-    events.on('game:restart', (data?: { heroId?: HeroId }) => {
-      this.startNewRun(data?.heroId || this.currentHeroId);
+    events.on('game:restart', (data?: { heroId?: HeroId; skillVariant?: SkillVariant }) => {
+      this.startNewRun(data?.heroId || this.currentHeroId, data?.skillVariant ?? this.currentSkillVariant);
     });
 
     events.on('game:return-lobby', () => {
       this.haltActiveRun();
     });
+  }
+
+  private clearTurrets(): void {
+    for (const turret of this.turrets) {
+      turret.destroy();
+    }
+    this.turrets = [];
   }
 
   private haltActiveRun(): void {
@@ -319,6 +388,7 @@ export class MainScene extends Phaser.Scene {
     this.floatingNumbers?.hidePrompt();
     this.projectilePool?.clearAll();
     this.effects?.clearAll();
+    this.clearTurrets();
     this.cameras?.main?.stopFollow();
 
     if (this.roomManager) {
@@ -334,9 +404,12 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  public startNewRun(heroId?: HeroId): void {
+  public startNewRun(heroId?: HeroId, skillVariant?: SkillVariant): void {
     if (heroId) {
       this.currentHeroId = heroId;
+    }
+    if (skillVariant) {
+      this.currentSkillVariant = skillVariant;
     }
 
     // Clean any active run state cleanly before starting fresh
@@ -363,7 +436,14 @@ export class MainScene extends Phaser.Scene {
     const playerSpawnY = startRoom.worldY + startRoom.height / 2;
     const metaBonuses = getMetaBonuses();
 
-    this.player = new PlayerController(this, playerSpawnX, playerSpawnY, this.currentHeroId, metaBonuses);
+    this.player = new PlayerController(
+      this,
+      playerSpawnX,
+      playerSpawnY,
+      this.currentHeroId,
+      metaBonuses,
+      this.currentSkillVariant
+    );
     this.player.setEffectsManager(this.effects);
     this.pet = new PetController(this, playerSpawnX, playerSpawnY);
 
@@ -404,6 +484,7 @@ export class MainScene extends Phaser.Scene {
       this.currentFloor += 1;
       this.projectilePool.clearAll();
       this.effects?.clearAll();
+      this.clearTurrets();
       if (this.roomManager) {
         this.roomManager.clearCurrentRoomVisuals();
       }
@@ -507,7 +588,8 @@ export class MainScene extends Phaser.Scene {
       pointer,
       this.projectilePool,
       allWallsAndProps,
-      this.roomManager.doorColliders
+      this.roomManager.doorColliders,
+      this.roomManager.activeEnemies
     );
 
     // 1b. Floor Spike Trap & Biome Terrain Hazards (Ice Glide / Lava Burn)
@@ -564,6 +646,15 @@ export class MainScene extends Phaser.Scene {
       );
     }
 
+    // 3c. Update Engineer Auto-Turrets
+    for (let i = this.turrets.length - 1; i >= 0; i--) {
+      const turret = this.turrets[i];
+      turret.update(deltaSec, this.roomManager.activeEnemies, this.projectilePool);
+      if (turret.isExpired) {
+        this.turrets.splice(i, 1);
+      }
+    }
+
     // 4. Update Projectiles (with active enemies for homing staff/sorcerer missiles)
     this.projectilePool.update(
       deltaSec,
@@ -585,6 +676,7 @@ export class MainScene extends Phaser.Scene {
       if (progress >= 1) {
         this.projectilePool.clearAll();
         this.effects?.clearAll();
+        this.clearTurrets();
         this.player.sprite.setPosition(spawnX, spawnY);
         this.camLookAheadX = 0;
         this.camLookAheadY = 0;
