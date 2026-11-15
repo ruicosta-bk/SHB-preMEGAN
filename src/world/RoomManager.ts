@@ -758,6 +758,10 @@ export class RoomManager {
 
   public spawnRoomRewards(room: RoomState): void {
     if (room.rewardSpawned) return;
+    if (room.type === 'rest') {
+      this.spawnRestRoomMerchant(room);
+      return;
+    }
     room.rewardSpawned = true;
 
     const centerX = room.worldX + room.width / 2;
@@ -771,8 +775,6 @@ export class RoomManager {
       this.spawnPickup('coin', centerX - 35, centerY + 35, 3);
       this.spawnPickup('heart', centerX - 80, centerY, 3);
       this.spawnPickup('energy', centerX + 90, centerY, 60);
-    } else if (room.type === 'rest') {
-      this.spawnRestRoomMerchant(room);
     } else if (room.type === 'boss') {
       this.spawnPickup('boss_chest', centerX - 48, centerY);
       this.spawnPickup('portal', centerX + 36, centerY);
