@@ -12,6 +12,7 @@ import { DamageCalculator } from '../combat/DamageCalculator';
 import { ProjectilePool } from '../combat/ProjectilePool';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
+import { controlSettings, codeToPhaserKeyCode } from '../core/ControlSettings';
 import { MetaBonuses } from '../core/MetaProgression';
 import { EffectsManager } from '../presentation/EffectsManager';
 
@@ -57,7 +58,7 @@ export class PlayerController {
   private isDead: boolean = false;
 
   // Input keys
-  private keys: {
+  private keys!: {
     w: Phaser.Input.Keyboard.Key;
     a: Phaser.Input.Keyboard.Key;
     s: Phaser.Input.Keyboard.Key;
@@ -70,7 +71,11 @@ export class PlayerController {
     q: Phaser.Input.Keyboard.Key;
     e: Phaser.Input.Keyboard.Key;
     f: Phaser.Input.Keyboard.Key;
+    fire: Phaser.Input.Keyboard.Key;
     esc: Phaser.Input.Keyboard.Key;
+  };
+  private controlsUpdatedCb = () => {
+    this.bindControlKeys();
   };
 
   // Hero class state
@@ -173,23 +178,9 @@ export class PlayerController {
     this.shadow = scene.add.sprite(x, y + 10, 'shadow').setDepth(9);
     this.sprite = scene.add.sprite(x, y, `${this.texturePrefix}_idle`).setDepth(10);
 
-    // Setup input keys
-    const k = scene.input.keyboard!;
-    this.keys = {
-      w: k.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      a: k.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      s: k.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      d: k.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-      up: k.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
-      left: k.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
-      down: k.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
-      right: k.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
-      space: k.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
-      q: k.addKey(Phaser.Input.Keyboard.KeyCodes.Q),
-      e: k.addKey(Phaser.Input.Keyboard.KeyCodes.E),
-      f: k.addKey(Phaser.Input.Keyboard.KeyCodes.F),
-      esc: k.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
-    };
+    // Setup dynamic input keys from ControlSettings & subscribe to runtime rebinds
+    this.bindControlKeys();
+    events.on('settings:controls-updated', this.controlsUpdatedCb);
 
     // Slash sprite
     this.slashSprite = scene.add.sprite(0, 0, 'slash_arc').setDepth(14).setVisible(false);
@@ -617,21 +608,49 @@ export class PlayerController {
       this.emitStats();
     }
 
-    // Weapon swap input (Q)
+    // Weapon swap input
     if (Phaser.Input.Keyboard.JustDown(this.keys.q)) {
       this.swapWeaponSlot();
     }
 
-    // Active skill input (F or Right Click)
+    // Resolve aiming target based on Touchpad AimMode + Fire input
+    const aimMode = controlSettings.getSettings().aimMode;
+    const isMouseFire = pointer.isDown;
+    const isKeyFire = this.keys.fire.isDown;
+    const isAttackHeld = isMouseFire || isKeyFire;
+
+    let aimWorldX = pointer.worldX;
+    let aimWorldY = pointer.worldY;
+    const shouldAutoAimNearest =
+      aimMode === 'auto_nearest' ||
+      (aimMode === 'touchpad_assist' && isKeyFire && !isMouseFire);
+    if (shouldAutoAimNearest && enemies.length > 0) {
+      let bestDist = 520;
+      let nearest: EnemyBase | null = null;
+      for (const enemy of enemies) {
+        if (enemy.isDead) continue;
+        const d = Math.hypot(enemy.sprite.x - this.sprite.x, enemy.sprite.y - this.sprite.y);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = enemy;
+        }
+      }
+      if (nearest) {
+        aimWorldX = nearest.sprite.x;
+        aimWorldY = nearest.sprite.y;
+      }
+    }
+    const aimAngle = Math.atan2(aimWorldY - this.sprite.y, aimWorldX - this.sprite.x);
+
+    // Active skill input (F/custom key or Right Click)
     const isRightClick = pointer.rightButtonDown() && pointer.getDuration() < 120;
     if ((Phaser.Input.Keyboard.JustDown(this.keys.f) || isRightClick) && this.skillCooldownRemaining <= 0) {
-      this.useSkill(pointer, pool, wallColliders, doorColliders);
+      const skillPointer =
+        aimMode === 'auto_nearest' && !isRightClick
+          ? ({ worldX: aimWorldX, worldY: aimWorldY } as Phaser.Input.Pointer)
+          : pointer;
+      this.useSkill(skillPointer, pool, wallColliders, doorColliders);
     }
-
-    // Aiming towards mouse in world coordinates
-    const aimWorldX = pointer.worldX;
-    const aimWorldY = pointer.worldY;
-    const aimAngle = Math.atan2(aimWorldY - this.sprite.y, aimWorldX - this.sprite.x);
 
     // Flip sprite towards aim
     if (aimWorldX < this.sprite.x) {
@@ -823,11 +842,11 @@ export class PlayerController {
       }
     }
 
-    // Bow charge-and-release or standard continuous fire
+    // Bow charge-and-release or standard continuous fire (supports Left Click OR custom Fire key for touchpad users)
     const curWeapon = this.getCurrentWeapon();
     if (curWeapon.category === 'bow') {
       const chargeMax = curWeapon.chargeTime || 0.75;
-      if (pointer.isDown && this.shootCooldownRemaining <= 0) {
+      if (isAttackHeld && this.shootCooldownRemaining <= 0) {
         this.isChargingBow = true;
         this.bowChargeTime = Math.min(chargeMax, this.bowChargeTime + deltaSec);
         if (!this.bowChargeGfx) {
@@ -846,7 +865,7 @@ export class PlayerController {
           false
         );
         this.bowChargeGfx.strokePath();
-      } else if (this.isChargingBow && !pointer.isDown) {
+      } else if (this.isChargingBow && !isAttackHeld) {
         const chargeRatio = Math.max(0.35, Math.min(1, this.bowChargeTime / chargeMax));
         this.isChargingBow = false;
         this.bowChargeTime = 0;
@@ -859,7 +878,7 @@ export class PlayerController {
         this.bowChargeTime = 0;
         if (this.bowChargeGfx) this.bowChargeGfx.clear();
       }
-      if (pointer.isDown && this.shootCooldownRemaining <= 0) {
+      if (isAttackHeld && this.shootCooldownRemaining <= 0) {
         this.performAttack(aimAngle, pool, [...wallColliders, ...doorColliders]);
       }
     }
@@ -1974,7 +1993,31 @@ export class PlayerController {
     });
   }
 
+  private bindControlKeys(): void {
+    const k = this.scene.input.keyboard;
+    if (!k) return;
+    const b = controlSettings.getSettings().bindings;
+    const makeKey = (code: string, fallback: number) => k.addKey(codeToPhaserKeyCode(code) ?? fallback);
+    this.keys = {
+      w: makeKey(b.moveUp, 87),
+      a: makeKey(b.moveLeft, 65),
+      s: makeKey(b.moveDown, 83),
+      d: makeKey(b.moveRight, 68),
+      up: k.addKey(38),
+      left: k.addKey(37),
+      down: k.addKey(40),
+      right: k.addKey(39),
+      space: makeKey(b.dash, 32),
+      q: makeKey(b.swapWeapon, 81),
+      e: makeKey(b.interact, 69),
+      f: makeKey(b.skill, 70),
+      fire: makeKey(b.fire, 74),
+      esc: k.addKey(27)
+    };
+  }
+
   public destroy(): void {
+    events.off('settings:controls-updated', this.controlsUpdatedCb);
     this.sprite.destroy();
     this.shadow.destroy();
     if (this.weaponSprite) this.weaponSprite.destroy();

@@ -21,6 +21,7 @@ import { findMergeResult } from '../data/merges';
 import type { EnemyBase } from '../enemies/EnemyBase';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
+import { controlSettings, normalizeKeyboardCode } from '../core/ControlSettings';
 import { getMetaBonuses, recordRunResult } from '../core/MetaProgression';
 
 export interface PauseableSceneLike {
@@ -159,9 +160,12 @@ export class MainScene extends Phaser.Scene {
       if (typeof window.focus === 'function') window.focus();
     });
 
-    // 5. E key listener for pickup interaction
-    this.input.keyboard!.on('keydown-E', () => {
-      this.interactWithNearest();
+    // 5. Interact key listener for pickup/prop interaction (customizable in Settings)
+    this.input.keyboard!.on('keydown', (event: { key?: string; code?: string }) => {
+      if (this.isPaused || (this.uiScene && this.uiScene.isAnyModalOpen)) return;
+      if (normalizeKeyboardCode(event) === controlSettings.getBinding('interact')) {
+        this.interactWithNearest();
+      }
     });
 
     // 7. Debug shortcut (B) to jump to Boss Room for verification
@@ -422,6 +426,12 @@ export class MainScene extends Phaser.Scene {
 
     events.on('game:return-lobby', () => {
       this.haltActiveRun();
+    });
+
+    events.on('settings:modal-toggled', (data: { isOpen: boolean }) => {
+      if (!this.isGameRunning || this.isPaused) return;
+      this.input?.keyboard?.resetKeys?.();
+      this.pausedAtMs = syncScenePauseState(this, data.isOpen, this.pausedAtMs);
     });
   }
 
@@ -1129,12 +1139,13 @@ export class MainScene extends Phaser.Scene {
     }
 
     if (this.nearestPickup) {
+      const interactKey = controlSettings.getBindingLabel('interact');
       if (this.nearestPickup.type === 'weapon') {
         const wData = this.nearestPickup.data as WeaponData;
         const mergeWith = this.player.getMergeMatchForWeapon(wData);
         const prompt = mergeWith
-          ? `[E] Nhặt: ${wData.nameVi} ★ (Ghép ${mergeWith.nameVi}!)`
-          : `[E] Nhặt: ${wData.nameVi}`;
+          ? `[${interactKey}] Nhặt: ${wData.nameVi} ★ (Ghép ${mergeWith.nameVi}!)`
+          : `[${interactKey}] Nhặt: ${wData.nameVi}`;
         const mergeId = mergeWith ? findMergeResult(mergeWith.id, wData.id) : null;
         const mergeNameVi = mergeId && WEAPONS[mergeId] ? WEAPONS[mergeId].nameVi : null;
         this.floatingNumbers.hidePrompt();
@@ -1147,33 +1158,36 @@ export class MainScene extends Phaser.Scene {
           mergeNameVi
         );
       } else {
-        let prompt = '[E] Tương tác';
+        let prompt = `[${interactKey}] Tương tác`;
         if (this.nearestPickup.type === 'chest') {
-          prompt = '[E] Mở Rương Báu Cổ';
+          prompt = `[${interactKey}] Mở Rương Báu Cổ`;
         } else if (this.nearestPickup.type === 'boss_chest') {
-          prompt = '[E] Mở Rương Thủ Lĩnh';
+          prompt = `[${interactKey}] Mở Rương Thủ Lĩnh`;
         } else if (this.nearestPickup.type === 'altar') {
-          prompt = '[E] Tiếp nhận Nâng Cấp Giả Kim';
+          prompt = `[${interactKey}] Tiếp nhận Nâng Cấp Giả Kim`;
         } else if (this.nearestPickup.type === 'statue') {
-          prompt = `[E] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
+          prompt = `[${interactKey}] Cầu nguyện (${this.nearestPickup.price || 12} Vàng)`;
         } else if (this.nearestPickup.type === 'vending') {
-          prompt = `[E] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
+          prompt = `[${interactKey}] Mua Nước Buff (${this.nearestPickup.price || 12} Vàng)`;
         } else if (this.nearestPickup.type === 'forge') {
           const mergePreview = this.player.getMergePreview();
           prompt = mergePreview
-            ? `[E] Hợp Nhất: ${mergePreview.first.nameVi} + ${mergePreview.second.nameVi} -> ${mergePreview.result.nameVi} (Miễn phí)`
-            : `[E] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
+            ? `[${interactKey}] Hợp Nhất: ${mergePreview.first.nameVi} + ${mergePreview.second.nameVi} -> ${mergePreview.result.nameVi} (Miễn phí)`
+            : `[${interactKey}] Cường Hóa Vũ Khí (${this.nearestPickup.price || 18} Vàng)`;
         } else if (this.nearestPickup.type === 'core_anvil') {
-          prompt = `[E] Gắn Lõi Nguyên Tố (${this.nearestPickup.price || 15} Vàng)`;
+          prompt = `[${interactKey}] Gắn Lõi Nguyên Tố (${this.nearestPickup.price || 15} Vàng)`;
         } else if (this.nearestPickup.type === 'weapon_core') {
           const coreData = this.nearestPickup.data as WeaponCoreData | undefined;
           prompt = coreData
-            ? `[E] Gắn ${coreData.nameVi} (+${coreData.bonusDamage} ST)`
-            : '[E] Nhặt Lõi Nguyên Tố';
+            ? `[${interactKey}] Gắn ${coreData.nameVi} (+${coreData.bonusDamage} ST)`
+            : `[${interactKey}] Nhặt Lõi Nguyên Tố`;
         } else if (this.nearestPickup.type === 'portal') {
-          prompt = this.currentFloor < TOTAL_FLOORS ? '[E] Bước Vào Tầng Tiếp Theo' : '[E] Hoàn Thành Hầm Ngục';
+          prompt =
+            this.currentFloor < TOTAL_FLOORS
+              ? `[${interactKey}] Bước Vào Tầng Tiếp Theo`
+              : `[${interactKey}] Hoàn Thành Hầm Ngục`;
         } else if (this.nearestPickup.type === 'shop_item') {
-          prompt = `[E] Mua: ${this.nearestPickup.label}`;
+          prompt = `[${interactKey}] Mua: ${this.nearestPickup.label}`;
         }
         this.floatingNumbers.hideWeaponTooltip();
         this.floatingNumbers.showPrompt(this.nearestPickup.sprite.x, this.nearestPickup.sprite.y, prompt);

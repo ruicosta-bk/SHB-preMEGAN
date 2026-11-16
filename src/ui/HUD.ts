@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { events } from '../core/EventBus';
+import { controlSettings } from '../core/ControlSettings';
 import { WeaponCoreId, WeaponData } from '../types/weapon';
 import { RoomState } from '../types/room';
 import { DifficultyMode } from '../data/difficulty';
@@ -45,6 +46,14 @@ export class HUD {
   private minimapGraphics: Phaser.GameObjects.Graphics;
   private roomTitleText: Phaser.GameObjects.Text;
   private difficultyBadge: Phaser.GameObjects.Container;
+  private lastDashProgress: number = 1;
+  private lastDashReady: boolean = true;
+  private lastSkillProgress: number = 1;
+  private lastSkillReady: boolean = true;
+  private lastCurWeapon: WeaponData | null = null;
+  private lastSecWeapon: WeaponData | null = null;
+  private lastCurCore: WeaponCoreId | null | undefined = null;
+  private lastSecCore: WeaponCoreId | null | undefined = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -88,13 +97,13 @@ export class HUD {
     // Dash Bar
     this.dashBar = scene.add.graphics();
     this.container.add(this.dashBar);
-    this.dashText = scene.add.text(125, 91, 'LƯỚT [SPACE]: SẴN SÀNG', { ...fontStyle, fontSize: '11px', color: '#f59e0b' }).setOrigin(0.5, 0);
+    this.dashText = scene.add.text(125, 91, `LƯỚT [${controlSettings.getBindingLabel('dash')}]: SẴN SÀNG`, { ...fontStyle, fontSize: '11px', color: '#f59e0b' }).setOrigin(0.5, 0);
     this.container.add(this.dashText);
 
-    // Skill Bar (Alchemical Flask [F])
+    // Skill Bar (Hero Skill)
     this.skillBar = scene.add.graphics();
     this.container.add(this.skillBar);
-    this.skillText = scene.add.text(125, 113, 'BÌNH HỎA [F]: SẴN SÀNG', { ...fontStyle, fontSize: '11px', color: '#ef4444' }).setOrigin(0.5, 0);
+    this.skillText = scene.add.text(125, 113, `BÌNH HỎA [${controlSettings.getBindingLabel('skill')}]: SẴN SÀNG`, { ...fontStyle, fontSize: '11px', color: '#ef4444' }).setOrigin(0.5, 0);
     this.container.add(this.skillText);
 
     // Coins (Gold)
@@ -129,7 +138,7 @@ export class HUD {
     this.secWeaponIcon = scene.add.sprite(1225, 660, 'icon_shotgun').setScale(0.8).setAlpha(0.5);
     this.container.add(this.secWeaponIcon);
 
-    this.secWeaponText = scene.add.text(1225, 688, '[Q] Đổi', { ...fontStyle, fontSize: '11px', color: '#64748b' }).setOrigin(0.5, 0);
+    this.secWeaponText = scene.add.text(1225, 688, `[${controlSettings.getBindingLabel('swapWeapon')}] Đổi`, { ...fontStyle, fontSize: '11px', color: '#64748b' }).setOrigin(0.5, 0);
     this.container.add(this.secWeaponText);
 
     // --- 3. MINIMAP (Top-Right) ---
@@ -242,6 +251,14 @@ export class HUD {
     events.on('room:entered', (data: any) => {
       this.roomTitleText.setText(data.room.titleVi);
     });
+
+    events.on('settings:controls-updated', () => {
+      this.updateDash(this.lastDashProgress, this.lastDashReady);
+      this.updateSkill(this.lastSkillProgress, this.lastSkillReady);
+      if (this.lastCurWeapon) {
+        this.updateWeapons(this.lastCurWeapon, this.lastSecWeapon, this.lastCurCore, this.lastSecCore);
+      }
+    });
   }
 
   public updateStats(stats: { hp: number; maxHp: number; armor: number; maxArmor: number; energy: number; maxEnergy: number }): void {
@@ -278,6 +295,8 @@ export class HUD {
   }
 
   public updateDash(progress: number, isReady: boolean): void {
+    this.lastDashProgress = progress;
+    this.lastDashReady = isReady;
     const barW = 180;
     const barH = 10;
     const startX = 35;
@@ -289,11 +308,13 @@ export class HUD {
     this.dashBar.fillStyle(isReady ? 0xf59e0b : 0x71717a, 1.0);
     this.dashBar.fillRect(startX, 94, barW * progress, barH);
 
-    this.dashText.setText(isReady ? 'LƯỚT [SPACE]: SẴN SÀNG' : 'LƯỚT: ĐANG HỒI...');
+    this.dashText.setText(isReady ? `LƯỚT [${controlSettings.getBindingLabel('dash')}]: SẴN SÀNG` : 'LƯỚT: ĐANG HỒI...');
     this.dashText.setColor(isReady ? '#f59e0b' : '#94a3b8');
   }
 
   public updateSkill(progress: number, isReady: boolean): void {
+    this.lastSkillProgress = progress;
+    this.lastSkillReady = isReady;
     const barW = 180;
     const barH = 10;
     const startX = 35;
@@ -305,7 +326,7 @@ export class HUD {
     this.skillBar.fillStyle(isReady ? this.skillColorNum : 0x71717a, 1.0);
     this.skillBar.fillRect(startX, 116, barW * progress, barH);
 
-    this.skillText.setText(isReady ? `${this.skillShortLabel} [F]: SẴN SÀNG` : `${this.skillShortLabel}: ĐANG HỒI...`);
+    this.skillText.setText(isReady ? `${this.skillShortLabel} [${controlSettings.getBindingLabel('skill')}]: SẴN SÀNG` : `${this.skillShortLabel}: ĐANG HỒI...`);
     this.skillText.setColor(isReady ? this.skillColorHex : '#94a3b8');
   }
 
@@ -315,6 +336,10 @@ export class HUD {
     curCoreId?: WeaponCoreId | null,
     secCoreId?: WeaponCoreId | null
   ): void {
+    this.lastCurWeapon = cur;
+    this.lastSecWeapon = sec;
+    this.lastCurCore = curCoreId;
+    this.lastSecCore = secCoreId;
     this.curWeaponIcon.setTexture(cur.iconTexture);
     this.curWeaponText.setText(cur.nameVi);
 
@@ -331,10 +356,11 @@ export class HUD {
     if (sec) {
       const secCore = getWeaponCore(secCoreId);
       this.secWeaponIcon.setTexture(sec.iconTexture).setVisible(true);
+      const swapLabel = controlSettings.getBindingLabel('swapWeapon');
       if (secCore) {
-        this.secWeaponText.setText(`[Q] • ${secCore.shortLabelVi}`).setColor(secCore.colorHex);
+        this.secWeaponText.setText(`[${swapLabel}] • ${secCore.shortLabelVi}`).setColor(secCore.colorHex);
       } else {
-        this.secWeaponText.setText('[Q] Đổi').setColor('#94a3b8');
+        this.secWeaponText.setText(`[${swapLabel}] Đổi`).setColor('#94a3b8');
       }
     } else {
       this.secWeaponIcon.setVisible(false);

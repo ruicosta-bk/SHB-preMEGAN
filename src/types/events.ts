@@ -3,6 +3,7 @@ import { UpgradeData } from './upgrade';
 import { RoomState } from './room';
 import { HeroId, SkillVariant } from '../data/heroes';
 import { DifficultyMode } from '../data/difficulty';
+import { ControlSettingsState } from '../core/ControlSettings';
 
 export interface GameEvents {
   // Player state
@@ -44,9 +45,11 @@ export interface GameEvents {
   'upgrade:offer': { choices: UpgradeData[] };
   'upgrade:selected': { upgrade: UpgradeData };
 
-  // Game cycle
+  // Game cycle & Settings
   'game:pause-requested': void;
   'game:pause-toggled': { isPaused: boolean };
+  'settings:controls-updated': ControlSettingsState;
+  'settings:modal-toggled': { isOpen: boolean };
   'game:victory': RunResultEventPayload;
   'game:over': RunResultEventPayload;
   'game:restart': { heroId?: HeroId; skillVariant?: SkillVariant; difficultyMode?: DifficultyMode } | void;

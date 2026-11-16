@@ -4,7 +4,9 @@ import { TitleScreen } from '../ui/TitleScreen';
 import { PauseModal } from '../ui/PauseModal';
 import { UpgradeSelectModal } from '../ui/UpgradeSelectModal';
 import { GameOverModal, RunStats } from '../ui/GameOverModal';
+import { SettingsModal } from '../ui/SettingsModal';
 import { events } from '../core/EventBus';
+import { audio } from '../core/AudioSystem';
 import { HeroId, SkillVariant } from '../data/heroes';
 import { DifficultyMode } from '../data/difficulty';
 
@@ -14,6 +16,7 @@ export class UIScene extends Phaser.Scene {
   public pauseModal!: PauseModal;
   public upgradeModal!: UpgradeSelectModal;
   public gameOverModal!: GameOverModal;
+  public settingsModal!: SettingsModal;
   private selectedHeroId: HeroId = 'alchemist';
   private selectedSkillVariant: SkillVariant = 1;
   private selectedDifficultyMode: DifficultyMode = 'normal';
@@ -34,6 +37,9 @@ export class UIScene extends Phaser.Scene {
     this.pauseModal = new PauseModal(this);
     this.upgradeModal = new UpgradeSelectModal(this);
     this.gameOverModal = new GameOverModal(this);
+    this.settingsModal = new SettingsModal(this);
+
+    this.createSettingsGearButton();
 
     // FPS & Performance monitor
     const fpsText = this.add.text(1260, 146, 'FPS: 60', {
@@ -105,7 +111,64 @@ export class UIScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => this.handleEscKey());
   }
 
+  private createSettingsGearButton(): void {
+    const x = 902;
+    const y = 34;
+    const w = 76;
+    const h = 34;
+
+    const container = this.add.container(x, y).setDepth(320).setScrollFactor(0);
+    const bg = this.add.graphics();
+    const drawBg = (hovered: boolean) => {
+      bg.clear();
+      bg.fillStyle(hovered ? 0x1e293b : 0x0f172a, 0.94);
+      bg.fillRoundedRect(-w / 2, -h / 2, w, h, 8);
+      bg.lineStyle(1.5, hovered ? 0xf59e0b : 0x38bdf8, 0.9);
+      bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
+    };
+    drawBg(false);
+    container.add(bg);
+
+    const label = this.add.text(0, 0, '⚙️ Phím', {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '12px',
+      color: '#e2e8f0',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    container.add(label);
+
+    const zone = this.add.zone(0, 0, w, h).setInteractive({ useHandCursor: true });
+    zone.on('pointerover', () => drawBg(true));
+    zone.on('pointerout', () => drawBg(false));
+    zone.on('pointerdown', () => {
+      audio.playPickup();
+      if (this.settingsModal.isOpen) {
+        this.settingsModal.hide();
+        this.handleSettingsClosed();
+      } else {
+        this.openSettingsModal();
+      }
+    });
+    container.add(zone);
+  }
+
+  public openSettingsModal(): void {
+    if (this.settingsModal.isOpen) return;
+    this.titleScreen?.setInputBlocked(true);
+    events.emit('settings:modal-toggled', { isOpen: true });
+    this.settingsModal.show(() => this.handleSettingsClosed());
+  }
+
+  private handleSettingsClosed(): void {
+    this.titleScreen?.setInputBlocked(false);
+    events.emit('settings:modal-toggled', { isOpen: false });
+  }
+
   public handleEscKey(): void {
+    if (this.settingsModal?.isOpen) {
+      this.settingsModal.handleEsc();
+      return;
+    }
     if (this.pauseModal?.isOpen) {
       this.pauseModal.hide();
       const resume = this.activePauseResume;
@@ -132,7 +195,8 @@ export class UIScene extends Phaser.Scene {
       (this.titleScreen && this.titleScreen.isOpen) ||
       (this.pauseModal && this.pauseModal.isOpen) ||
       (this.upgradeModal && this.upgradeModal.isOpen) ||
-      (this.gameOverModal && this.gameOverModal.isOpen)
+      (this.gameOverModal && this.gameOverModal.isOpen) ||
+      (this.settingsModal && this.settingsModal.isOpen)
     );
   }
 }

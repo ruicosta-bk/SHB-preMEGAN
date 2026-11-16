@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { audio } from '../core/AudioSystem';
+import { controlSettings } from '../core/ControlSettings';
+import { events } from '../core/EventBus';
 import { HEROES, HERO_LIST, HeroId, SkillVariant, getHeroSkillMeta } from '../data/heroes';
 import { DifficultyMode, DIFFICULTY_LABELS } from '../data/difficulty';
 import { WEAPONS } from '../data/weapons';
@@ -87,10 +89,36 @@ export class TitleScreen {
   private rotateHeroHandler: ((delta: number) => void) | null = null;
   private selectSkillHandler: ((variant: SkillVariant) => void) | null = null;
   private confirmStartHandler: (() => void) | null = null;
+  private inputBlocked: boolean = false;
+  private ctrlLine1Text: Phaser.GameObjects.Text | null = null;
+  private ctrlLine2Text: Phaser.GameObjects.Text | null = null;
+  private controlsUpdatedCb = () => {
+    this.refreshControlHints();
+  };
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0).setDepth(300).setScrollFactor(0);
+    events.on('settings:controls-updated', this.controlsUpdatedCb);
+  }
+
+  public setInputBlocked(blocked: boolean): void {
+    this.inputBlocked = blocked;
+  }
+
+  private refreshControlHints(): void {
+    if (!this.isOpen) return;
+    const up = controlSettings.getBindingLabel('moveUp');
+    const left = controlSettings.getBindingLabel('moveLeft');
+    const down = controlSettings.getBindingLabel('moveDown');
+    const right = controlSettings.getBindingLabel('moveRight');
+    const fire = controlSettings.getBindingLabel('fire');
+    const dash = controlSettings.getBindingLabel('dash');
+    const skill = controlSettings.getBindingLabel('skill');
+    const swap = controlSettings.getBindingLabel('swapWeapon');
+    const interact = controlSettings.getBindingLabel('interact');
+    this.ctrlLine1Text?.setText(`${up}${left}${down}${right}/Mũi tên: Di chuyển  |  [${fire}]/Chuột trái: Bắn`);
+    this.ctrlLine2Text?.setText(`${dash}: Lướt | ${skill}/C.Phải: Skill | ${swap}: Đổi | ${interact}: Nhặt`);
   }
 
   private detachKeyListener(): void {
@@ -105,7 +133,7 @@ export class TitleScreen {
   }
 
   public handleKeyDown(event: { key?: string; code?: string; preventDefault?: () => void }): boolean {
-    if (!this.isOpen) return false;
+    if (!this.isOpen || this.inputBlocked) return false;
     const code = event.code ?? '';
     const key = event.key ?? '';
 
@@ -161,19 +189,22 @@ export class TitleScreen {
     ctrlPill.strokeRoundedRect(24, 14, 376, 54, 10);
     this.container.add(ctrlPill);
 
-    const ctrlLine1 = this.scene.add.text(38, 29, 'WASD/Mũi tên: Di chuyển  |  Chuột trái: Bắn 360°', {
+    const ctrlLine1 = this.scene.add.text(38, 29, '', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '11px',
       color: '#e2e8f0'
     }).setOrigin(0, 0.5);
     this.container.add(ctrlLine1);
+    this.ctrlLine1Text = ctrlLine1;
 
-    const ctrlLine2 = this.scene.add.text(38, 51, 'Space: Lướt (0.2s) | F/Chuột phải: Skill | Q: Đổi | E: Tương tác', {
+    const ctrlLine2 = this.scene.add.text(38, 51, '', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '11px',
       color: '#94a3b8'
     }).setOrigin(0, 0.5);
     this.container.add(ctrlLine2);
+    this.ctrlLine2Text = ctrlLine2;
+    this.refreshControlHints();
 
     // Game Title
     const title = this.scene.add.text(640, 30, 'EMBER VAULT', {
@@ -195,12 +226,12 @@ export class TitleScreen {
     }).setOrigin(0.5);
     this.container.add(subtitle);
 
-    // Top-right Meta Progression Status Badge
+    // Top-right Meta Progression Status Badge (x: 946..1256 so Settings gear button at x: 902 stays unobstructed)
     const statusBadge = this.scene.add.graphics();
     statusBadge.fillStyle(0x111827, 0.92);
-    statusBadge.fillRoundedRect(880, 14, 376, 54, 10);
+    statusBadge.fillRoundedRect(946, 14, 310, 54, 10);
     statusBadge.lineStyle(1.5, 0x0284c7, 0.9);
-    statusBadge.strokeRoundedRect(880, 14, 376, 54, 10);
+    statusBadge.strokeRoundedRect(946, 14, 310, 54, 10);
     this.container.add(statusBadge);
 
     const gemStatusText = this.scene.add.text(1240, 29, '', {
@@ -990,6 +1021,7 @@ export class TitleScreen {
   }
 
   public destroy(): void {
+    events.off('settings:controls-updated', this.controlsUpdatedCb);
     this.detachKeyListener();
     this.container.destroy();
   }
