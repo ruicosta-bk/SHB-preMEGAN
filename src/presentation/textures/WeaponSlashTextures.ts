@@ -259,8 +259,8 @@ export function generateUnarmedTextures(
 }
 
 /**
- * Spawns 3 thick crescent slash afterimage layers sweeping in a fixed direction
- * (-0.85 rad to +0.85 rad around aimAngle) and fading out smoothly over ~210ms.
+ * Spawns 3 subtle translucent crescent slash afterimage layers strictly inside the sword's
+ * swing arc (-0.85 rad to +0.85 rad around aimAngle) without outer ring bloat.
  */
 export function spawnMeleeSlashTrail(
   scene: Phaser.Scene,
@@ -272,13 +272,13 @@ export function spawnMeleeSlashTrail(
 ): void {
   if (!scene?.add?.sprite) return;
 
-  const offsetDist = Math.max(18, radius * 0.48);
-  const baseScale = Math.max(0.68, radius / 48);
+  const offsetDist = Math.min(22, Math.max(14, Math.round(radius * 0.25)));
+  const baseScale = Math.min(0.95, Math.max(0.58, radius / 76));
 
   const layers = [
-    { startOffset: -0.85, endOffset: 0.15, scaleMult: 1.08, duration: 220 },
-    { startOffset: -0.45, endOffset: 0.55, scaleMult: 1.0, duration: 210 },
-    { startOffset: -0.05, endOffset: 0.85, scaleMult: 0.94, duration: 200 }
+    { startOffset: -0.85, endOffset: 0.15, scaleMult: 0.95, alpha: 0.28, duration: 175 },
+    { startOffset: -0.45, endOffset: 0.55, scaleMult: 0.88, alpha: 0.20, duration: 160 },
+    { startOffset: -0.05, endOffset: 0.85, scaleMult: 0.80, alpha: 0.14, duration: 145 }
   ];
 
   for (const layer of layers) {
@@ -295,7 +295,7 @@ export function spawnMeleeSlashTrail(
 
     spr.setRotation(startAngle);
     spr.setScale(layerScale);
-    spr.setAlpha(0.88);
+    spr.setAlpha(layer.alpha);
     spr.setDepth(14);
     if (tintColor !== undefined) {
       spr.setTint?.(tintColor);
@@ -309,8 +309,8 @@ export function spawnMeleeSlashTrail(
         targets: spr,
         rotation: endAngle,
         alpha: 0,
-        scaleX: layerScale * 1.12,
-        scaleY: layerScale * 1.12,
+        scaleX: layerScale,
+        scaleY: layerScale,
         duration: layer.duration,
         ease: 'Cubic.easeOut',
         onUpdate: () => {

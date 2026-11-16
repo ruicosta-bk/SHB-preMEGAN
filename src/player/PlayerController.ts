@@ -1285,8 +1285,8 @@ export class PlayerController {
       this.weaponSprite?.setRotation(aimAngle - 1.13);
       spawnMeleeSlashTrail(
         this.scene,
-        this.sprite.x + Math.cos(aimAngle) * 20,
-        this.sprite.y + Math.sin(aimAngle) * 20,
+        this.sprite.x,
+        this.sprite.y,
         aimAngle,
         radius,
         slashTint
@@ -1491,8 +1491,8 @@ export class PlayerController {
 
     spawnMeleeSlashTrail(
       this.scene,
-      this.sprite.x + Math.cos(aimAngle) * 14,
-      this.sprite.y + Math.sin(aimAngle) * 14,
+      this.sprite.x,
+      this.sprite.y,
       aimAngle,
       radius,
       0xfef08a

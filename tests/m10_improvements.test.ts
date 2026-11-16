@@ -468,7 +468,7 @@ describe('Milestone 10 Improvements Verification Suite', () => {
       expect(unarmedRefreshed).toEqual(['icon_unarmed', 'hand_unarmed']);
     });
 
-    it('spawns 3 slash_arc afterimage layers sweeping in fixed direction (-0.85 -> +0.85) and cleans up', () => {
+    it('spawns 3 faint slash_arc afterimage layers strictly inside swing arc (-0.85 -> +0.85) and cleans up', () => {
       for (const aimAngle of [0, Math.PI]) {
         const { scene, sprites, tweens } = createMockScene();
         spawnMeleeSlashTrail(scene, 100, 120, aimAngle, 96, 0x38bdf8);
@@ -478,19 +478,23 @@ describe('Milestone 10 Improvements Verification Suite', () => {
 
         const expectedStartOffsets = [-0.85, -0.45, -0.05];
         const expectedEndOffsets = [0.15, 0.55, 0.85];
+        const expectedDist = Math.min(22, Math.max(14, Math.round(96 * 0.25)));
+        expect(expectedDist).toBe(22);
 
         sprites.forEach((spr, idx) => {
           expect(spr.texture.key).toBe('slash_arc');
           expect(spr.tint).toBe(0x38bdf8);
+          expect(spr.alpha).toBeLessThanOrEqual(0.3);
+          expect(spr.scaleX).toBeLessThanOrEqual(1.0);
           expect(spr.rotation).toBeCloseTo(aimAngle + expectedStartOffsets[idx], 5);
           expect(tweens[idx].rotation).toBeCloseTo(aimAngle + expectedEndOffsets[idx], 5);
           expect(tweens[idx].rotation).toBeGreaterThan(spr.rotation);
           expect(tweens[idx].alpha).toBe(0);
+          expect(tweens[idx].scaleX).toBeCloseTo(spr.scaleX, 5);
 
           // Simulate tween mid-update and completion
           tweens[idx].targets.rotation = tweens[idx].rotation;
           tweens[idx].onUpdate();
-          const expectedDist = Math.max(18, 96 * 0.48);
           expect(spr.x).toBeCloseTo(100 + Math.cos(tweens[idx].rotation) * expectedDist, 4);
           expect(spr.y).toBeCloseTo(120 + Math.sin(tweens[idx].rotation) * expectedDist, 4);
 
