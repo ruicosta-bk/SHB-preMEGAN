@@ -344,12 +344,17 @@ export class HUD {
     this.curWeaponText.setText(cur.nameVi);
 
     const curCore = getWeaponCore(curCoreId);
-    const baseStats = `NL: ${cur.energyCost} | ST: ${cur.damage}`;
+    const dropLabel = controlSettings.getBindingLabel('dropWeapon');
+    const baseStats =
+      cur.id === 'unarmed'
+        ? `NL: 0 | ST: ${cur.damage} • Đánh tay`
+        : `NL: ${cur.energyCost} | ST: ${cur.damage}`;
     if (curCore) {
       this.curWeaponSubtext.setText(`${baseStats} • LÕI ${curCore.shortLabelVi}`);
       this.curWeaponSubtext.setColor(curCore.colorHex);
     } else {
-      this.curWeaponSubtext.setText(baseStats);
+      const dropHint = cur.id === 'unarmed' ? '' : ` • [${dropLabel}] Vứt`;
+      this.curWeaponSubtext.setText(`${baseStats}${dropHint}`);
       this.curWeaponSubtext.setColor('#94a3b8');
     }
 

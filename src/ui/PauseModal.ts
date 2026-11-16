@@ -33,6 +33,7 @@ export class PauseModal {
     const skillKey = controlSettings.getBindingLabel('skill');
     const swapKey = controlSettings.getBindingLabel('swapWeapon');
     const interactKey = controlSettings.getBindingLabel('interact');
+    const dropKey = controlSettings.getBindingLabel('dropWeapon');
 
     const backdrop = this.scene.add.graphics();
     backdrop.fillStyle(0x000000, 0.8);
@@ -61,7 +62,7 @@ export class PauseModal {
       `Phím ${fireKey} / Chuột trái: Tấn công (giữ để bắn liên tục)`,
       `Phím ${dashKey}: Lướt né đòn (bất tử 0.2s)`,
       `Phím ${skillKey} / Chuột phải: [S${skillVariant}] ${skillMeta.nameVi} (${heroCfg.nameVi})`,
-      `Phím ${swapKey}: Đổi súng  |  Phím ${interactKey}: Nhặt & Mua hàng Shop`,
+      `Phím ${swapKey}: Đổi súng  |  Phím ${dropKey}: Vứt súng  |  Phím ${interactKey}: Nhặt & Shop`,
       'Phím Esc: Tạm dừng  |  Phím Tab: Xem Kỹ năng & Trang bị'
     ];
     controls.forEach((text, i) => {

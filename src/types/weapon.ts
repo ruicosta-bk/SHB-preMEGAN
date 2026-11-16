@@ -1,4 +1,5 @@
 export type WeaponId =
+  | 'unarmed'
   | 'pistol'
   | 'shotgun'
   | 'repeater'

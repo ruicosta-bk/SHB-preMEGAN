@@ -1,6 +1,29 @@
 import { WeaponData, WeaponId } from '../types/weapon';
 
 export const WEAPONS: Record<WeaponId, WeaponData> = {
+  unarmed: {
+    id: 'unarmed',
+    name: 'Bare Hands',
+    nameVi: 'Tay Không',
+    category: 'melee',
+    damage: 4,
+    energyCost: 0,
+    fireRate: 2.2,
+    bulletSpeed: 0,
+    spreadAngle: 125,
+    pellets: 1,
+    range: 44,
+    pierceCount: 99,
+    bounceCount: 0,
+    bulletRadius: 0,
+    bulletColor: 0xfef08a,
+    bulletTexture: 'slash_arc',
+    iconTexture: 'icon_unarmed',
+    handTexture: 'hand_unarmed',
+    recoil: 4,
+    screenShake: 1.5,
+    descriptionVi: 'Đòn vung tay cận chiến tầm ngắn khi không cầm vũ khí hoặc khi cạn năng lượng.'
+  },
   pistol: {
     id: 'pistol',
     name: 'Pistol',
@@ -362,3 +385,5 @@ export const WEAPONS: Record<WeaponId, WeaponData> = {
     descriptionVi: 'Bắn ra chùm cầu băng cổ đại phát nổ sóng lạnh đóng băng kẻ địch trên diện rộng.'
   }
 };
+
+export const UNARMED_WEAPON: WeaponData = WEAPONS.unarmed;

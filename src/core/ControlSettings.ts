@@ -11,7 +11,8 @@ export type ControlAction =
   | 'dash'
   | 'skill'
   | 'swapWeapon'
-  | 'interact';
+  | 'interact'
+  | 'dropWeapon';
 
 export type AimMode = 'touchpad_assist' | 'cursor_only' | 'auto_nearest';
 
@@ -36,7 +37,8 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
   { action: 'dash', labelVi: 'Lướt né đòn' },
   { action: 'skill', labelVi: 'Kỹ năng tướng' },
   { action: 'swapWeapon', labelVi: 'Đổi vũ khí' },
-  { action: 'interact', labelVi: 'Tương tác / Nhặt đồ' }
+  { action: 'interact', labelVi: 'Tương tác / Nhặt đồ' },
+  { action: 'dropWeapon', labelVi: 'Vứt vũ khí' }
 ];
 
 export const AIM_MODES: readonly { id: AimMode; labelVi: string; descVi: string }[] = [
@@ -66,7 +68,8 @@ export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
   dash: 'Space',
   skill: 'KeyF',
   swapWeapon: 'KeyQ',
-  interact: 'KeyE'
+  interact: 'KeyE',
+  dropWeapon: 'KeyG'
 };
 
 export const DEFAULT_AIM_MODE: AimMode = 'touchpad_assist';

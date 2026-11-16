@@ -117,8 +117,9 @@ export class TitleScreen {
     const skill = controlSettings.getBindingLabel('skill');
     const swap = controlSettings.getBindingLabel('swapWeapon');
     const interact = controlSettings.getBindingLabel('interact');
+    const drop = controlSettings.getBindingLabel('dropWeapon');
     this.ctrlLine1Text?.setText(`${up}${left}${down}${right}/Mũi tên: Di chuyển  |  [${fire}]/Chuột trái: Bắn`);
-    this.ctrlLine2Text?.setText(`${dash}: Lướt | ${skill}/C.Phải: Skill | ${swap}: Đổi | ${interact}: Nhặt`);
+    this.ctrlLine2Text?.setText(`${dash}: Lướt | ${skill}/C.Phải: Skill | ${swap}: Đổi | ${interact}: Nhặt | ${drop}: Vứt`);
   }
 
   private detachKeyListener(): void {
@@ -184,9 +185,9 @@ export class TitleScreen {
     // Top-left compact controls pill
     const ctrlPill = this.scene.add.graphics();
     ctrlPill.fillStyle(0x111827, 0.9);
-    ctrlPill.fillRoundedRect(24, 14, 376, 54, 10);
+    ctrlPill.fillRoundedRect(24, 14, 396, 54, 10);
     ctrlPill.lineStyle(1.5, 0x334155, 0.85);
-    ctrlPill.strokeRoundedRect(24, 14, 376, 54, 10);
+    ctrlPill.strokeRoundedRect(24, 14, 396, 54, 10);
     this.container.add(ctrlPill);
 
     const ctrlLine1 = this.scene.add.text(38, 29, '', {

@@ -20,6 +20,7 @@ export interface GameEvents {
     currentCore?: WeaponCoreId | null;
     secondaryCore?: WeaponCoreId | null;
   };
+  'player:weapon-dropped': { weapon: WeaponData; x: number; y: number };
   'player:damaged': { amount: number; armorAbsorbed: number; hpLoss: number; currentHp: number };
   'player:healed': { hpGain: number; armorGain: number };
   'player:energy-consumed': { currentEnergy: number };

@@ -189,6 +189,76 @@ export function generateWeaponAndBarrelTextures(
 }
 
 /**
+ * Generates HUD icon and held fist sprite textures for unarmed hand strikes.
+ */
+export function generateUnarmedTextures(
+  tm: Phaser.Textures.TextureManager,
+  createCanvas: CreateCanvasFn,
+  refresh: RefreshTextureFn
+): void {
+  // 1. Unarmed HUD Icon (24x24)
+  let ctx = createCanvas(tm, 'icon_unarmed', 24, 24);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 24, 24);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 22, 22);
+
+  // Subtle impact arc behind fist
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(13, 12, 8.5, -1.0, 0.9, false);
+  ctx.stroke();
+
+  // Dark silhouette outline for clenched fist
+  ctx.fillStyle = '#090b10';
+  ctx.fillRect(5, 13, 6, 7);
+  ctx.fillRect(6, 7, 12, 10);
+
+  // Wrist wrap & golden knuckle gauntlet
+  ctx.fillStyle = '#b45309';
+  ctx.fillRect(6, 14, 5, 5);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(7, 8, 10, 8);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(8, 8, 8, 4);
+
+  // Individual knuckle segments & bright highlight
+  ctx.fillStyle = '#fef08a';
+  ctx.fillRect(8, 8, 2, 2);
+  ctx.fillRect(11, 8, 2, 2);
+  ctx.fillRect(14, 8, 2, 2);
+  ctx.fillStyle = '#d97706';
+  ctx.fillRect(10, 12, 5, 2);
+  refresh(tm, 'icon_unarmed');
+
+  // 2. Held Clenched Fist Sprite (16x10 facing right)
+  ctx = createCanvas(tm, 'hand_unarmed', 16, 10);
+  ctx.fillStyle = '#090b10';
+  ctx.fillRect(1, 3, 5, 4);
+  ctx.fillRect(5, 1, 10, 8);
+
+  // Forearm wrap
+  ctx.fillStyle = '#92400e';
+  ctx.fillRect(2, 4, 4, 2);
+
+  // Fist body & upper wrap
+  ctx.fillStyle = '#d97706';
+  ctx.fillRect(6, 2, 8, 6);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(6, 2, 8, 4);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(10, 2, 4, 5);
+
+  // Knuckle edge gleam
+  ctx.fillStyle = '#fef08a';
+  ctx.fillRect(12, 2, 2, 2);
+  ctx.fillRect(12, 5, 2, 2);
+  refresh(tm, 'hand_unarmed');
+}
+
+/**
  * Spawns 3 thick crescent slash afterimage layers sweeping in a fixed direction
  * (-0.85 rad to +0.85 rad around aimAngle) and fading out smoothly over ~210ms.
  */
@@ -203,7 +273,7 @@ export function spawnMeleeSlashTrail(
   if (!scene?.add?.sprite) return;
 
   const offsetDist = Math.max(18, radius * 0.48);
-  const baseScale = Math.max(0.85, radius / 48);
+  const baseScale = Math.max(0.68, radius / 48);
 
   const layers = [
     { startOffset: -0.85, endOffset: 0.15, scaleMult: 1.08, duration: 220 },

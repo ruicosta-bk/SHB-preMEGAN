@@ -252,7 +252,7 @@ export class SettingsModal {
       });
     });
 
-    const dualNote = this.scene.add.text(158, 102, 'Chuột trái/phải & Mũi tên vẫn dùng song song', {
+    const dualNote = this.scene.add.text(0, 136, 'Chuột trái/phải & Mũi tên vẫn dùng song song', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '11px',
       color: '#94a3b8'

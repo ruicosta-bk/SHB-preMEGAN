@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { generateNewBiomeEnemyTextures } from './textures/EnemyBossTextures';
-import { generateWeaponAndBarrelTextures } from './textures/WeaponSlashTextures';
+import { generateUnarmedTextures, generateWeaponAndBarrelTextures } from './textures/WeaponSlashTextures';
 
 export class TextureGenerator {
   public static generateAll(scene: Phaser.Scene): void {
@@ -20,6 +20,11 @@ export class TextureGenerator {
     this.createTurretFrames(tm);
     this.createIcons(tm);
     generateWeaponAndBarrelTextures(
+      tm,
+      this.createCanvas.bind(this),
+      this.refresh.bind(this)
+    );
+    generateUnarmedTextures(
       tm,
       this.createCanvas.bind(this),
       this.refresh.bind(this)

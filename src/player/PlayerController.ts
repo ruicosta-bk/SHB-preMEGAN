@@ -43,9 +43,11 @@ export class PlayerController {
   public coins: number = 0;
 
   // Weapons
-  public weaponSlots: [WeaponData, WeaponData | null] = [WEAPONS.pistol, null];
+  public static readonly UNARMED_COOLDOWN_SEC: number = 0.45;
+  public weaponSlots: [WeaponData | null, WeaponData | null] = [WEAPONS.pistol, null];
   public activeSlotIndex: number = 0;
   private shootCooldownRemaining: number = 0;
+  private unarmedCooldownRemaining: number = 0;
 
   // Dash & Movement
   private isDashing: boolean = false;
@@ -73,6 +75,7 @@ export class PlayerController {
     q: Phaser.Input.Keyboard.Key;
     e: Phaser.Input.Keyboard.Key;
     f: Phaser.Input.Keyboard.Key;
+    g: Phaser.Input.Keyboard.Key;
     fire: Phaser.Input.Keyboard.Key;
     esc: Phaser.Input.Keyboard.Key;
   };
@@ -232,8 +235,12 @@ export class PlayerController {
     events.emit('player:coins-changed', { coins: this.coins });
   }
 
+  public isUnarmed(): boolean {
+    return this.weaponSlots[0] === null && this.weaponSlots[1] === null;
+  }
+
   public getCurrentWeapon(): WeaponData {
-    return this.weaponSlots[this.activeSlotIndex] || WEAPONS.pistol;
+    return this.weaponSlots[this.activeSlotIndex] || this.weaponSlots[0] || this.weaponSlots[1] || WEAPONS.unarmed;
   }
 
   public getSecondaryWeapon(): WeaponData | null {
@@ -241,10 +248,19 @@ export class PlayerController {
   }
 
   public equipWeapon(weapon: WeaponData): WeaponData | null {
-    // If secondary slot is empty, put it in secondary
+    // Fill slot 0 first if completely unarmed, otherwise fill secondary slot 1
+    if (this.weaponSlots[0] === null) {
+      this.weaponSlots[0] = weapon;
+      this.activeSlotIndex = 0;
+      this.meleeSwingTimer = 0;
+      this.emitWeaponChange();
+      audio.playPickup();
+      return null;
+    }
     if (this.weaponSlots[1] === null) {
       this.weaponSlots[1] = weapon;
       this.activeSlotIndex = 1;
+      this.meleeSwingTimer = 0;
       this.emitWeaponChange();
       audio.playPickup();
       return null;
@@ -254,15 +270,41 @@ export class PlayerController {
     const oldWeapon = this.weaponSlots[slotToReplace];
     this.weaponSlots[slotToReplace] = weapon;
     this.activeSlotIndex = slotToReplace;
+    this.meleeSwingTimer = 0;
     this.emitWeaponChange();
     audio.playPickup();
     return oldWeapon;
   }
 
+  public dropCurrentWeapon(): WeaponData | null {
+    if (this.isUnarmed()) return null;
+    const dropIndex = this.weaponSlots[this.activeSlotIndex]
+      ? this.activeSlotIndex
+      : this.weaponSlots[0]
+        ? 0
+        : 1;
+    const current = this.weaponSlots[dropIndex];
+    if (!current) return null;
+
+    const remaining = this.weaponSlots[dropIndex === 0 ? 1 : 0];
+    this.weaponSlots = [remaining, null];
+    this.activeSlotIndex = 0;
+    this.meleeSwingTimer = 0;
+    this.isChargingBow = false;
+    this.bowChargeTime = 0;
+    this.bowChargeGfx?.clear();
+    this.emitWeaponChange();
+    audio.playPickup();
+    return current;
+  }
+
   public swapWeaponSlot(): void {
-    if (this.weaponSlots[1] !== null) {
+    if (this.weaponSlots[0] !== null && this.weaponSlots[1] !== null) {
       this.activeSlotIndex = this.activeSlotIndex === 0 ? 1 : 0;
       this.meleeSwingTimer = 0;
+      this.isChargingBow = false;
+      this.bowChargeTime = 0;
+      this.bowChargeGfx?.clear();
       this.emitWeaponChange();
       audio.playPickup();
     }
@@ -321,6 +363,7 @@ export class PlayerController {
   }
 
   public forgeCurrentWeapon(): number | null {
+    if (this.isUnarmed()) return null;
     const cur = this.getCurrentWeapon();
     const level = this.getForgeLevel(cur.id);
     if (level >= 2) return null;
@@ -644,7 +687,18 @@ export class PlayerController {
     if (this.isDead) return;
 
     // Timers
-    if (this.shootCooldownRemaining > 0) this.shootCooldownRemaining -= deltaSec;
+    if (this.shootCooldownRemaining > 0) {
+      this.shootCooldownRemaining = Math.max(0, this.shootCooldownRemaining - deltaSec);
+      if (this.shootCooldownRemaining <= 1e-6) {
+        this.shootCooldownRemaining = 0;
+      }
+    }
+    if (this.unarmedCooldownRemaining > 0) {
+      this.unarmedCooldownRemaining = Math.max(0, this.unarmedCooldownRemaining - deltaSec);
+      if (this.unarmedCooldownRemaining <= 1e-6) {
+        this.unarmedCooldownRemaining = 0;
+      }
+    }
     if (this.dashCooldownRemaining > 0) {
       this.dashCooldownRemaining -= deltaSec;
       const progress = 1 - Math.max(0, this.dashCooldownRemaining / this.stats.dashCooldown);
@@ -778,9 +832,19 @@ export class PlayerController {
       this.emitStats();
     }
 
-    // Weapon swap input
+    // Weapon swap & drop inputs
     if (Phaser.Input.Keyboard.JustDown(this.keys.q)) {
       this.swapWeaponSlot();
+    }
+    if (this.keys.g && Phaser.Input.Keyboard.JustDown(this.keys.g)) {
+      const dropped = this.dropCurrentWeapon();
+      if (dropped) {
+        events.emit('player:weapon-dropped', {
+          weapon: dropped,
+          x: this.sprite.x,
+          y: this.sprite.y
+        });
+      }
     }
 
     // Resolve aiming target based on Touchpad AimMode + Fire input
@@ -977,6 +1041,11 @@ export class PlayerController {
       }
     }
     const weaponAngle = aimAngle + swingOffset;
+    const expectedHandTex = this.getCurrentWeapon().handTexture;
+    if (this.meleeSwingTimer <= 0 && this.weaponSprite.texture?.key !== expectedHandTex) {
+      this.weaponSprite.setTexture(expectedHandTex);
+      this.offhandWeaponSprite?.setTexture(expectedHandTex);
+    }
 
     const wx = this.sprite.x + Math.cos(weaponAngle) * holdRadius + perpX * sep;
     const wy = this.sprite.y + 3 + Math.sin(weaponAngle) * holdRadius + perpY * sep;
@@ -1035,7 +1104,17 @@ export class PlayerController {
     const curWeapon = this.getCurrentWeapon();
     if (curWeapon.category === 'bow') {
       const chargeMax = curWeapon.chargeTime || 0.75;
-      if (isAttackHeld && this.shootCooldownRemaining <= 0) {
+      const bowEnergyCost = this.overdriveTimer > 0 ? 0 : curWeapon.energyCost;
+      if (bowEnergyCost > this.stats.energy) {
+        if (this.isChargingBow) {
+          this.isChargingBow = false;
+          this.bowChargeTime = 0;
+          if (this.bowChargeGfx) this.bowChargeGfx.clear();
+        }
+        if (isAttackHeld && this.shootCooldownRemaining <= 0 && this.unarmedCooldownRemaining <= 0) {
+          this.performUnarmedStrike(aimAngle, pool);
+        }
+      } else if (isAttackHeld && this.shootCooldownRemaining <= 0) {
         this.isChargingBow = true;
         this.bowChargeTime = Math.min(chargeMax, this.bowChargeTime + deltaSec);
         if (!this.bowChargeGfx) {
@@ -1127,6 +1206,13 @@ export class PlayerController {
     solidColliders: { x: number; y: number; width: number; height: number }[] = []
   ): void {
     const weapon = this.getCurrentWeapon();
+    if (weapon.id === 'unarmed') {
+      if (this.unarmedCooldownRemaining <= 0) {
+        this.performUnarmedStrike(aimAngle, pool);
+      }
+      return;
+    }
+
     const attachedCore = getWeaponCore(this.getWeaponCore(weapon.id));
     const coreBonusDamage = attachedCore ? attachedCore.bonusDamage : 0;
     const effectiveElement: 'fire' | 'frost' | 'lightning' | 'poison' | undefined =
@@ -1139,11 +1225,13 @@ export class PlayerController {
             ? 'lightning'
             : undefined);
 
-    // Check energy cost (free during Knight Rapid Overdrive)
+    // Check energy cost (free during Knight Rapid Overdrive; out of mana triggers close-range unarmed hand strike)
     const effectiveEnergyCost = this.overdriveTimer > 0 ? 0 : weapon.energyCost;
     if (effectiveEnergyCost > 0) {
       if (!DamageCalculator.consumeEnergy(this.stats, effectiveEnergyCost)) {
-        // Can't afford energy, fail silently or fallback to pistol
+        if (this.unarmedCooldownRemaining <= 0) {
+          this.performUnarmedStrike(aimAngle, pool);
+        }
         return;
       }
       this.emitStats();
@@ -1374,6 +1462,71 @@ export class PlayerController {
     } else {
       fireVolley(0, 1.0);
     }
+  }
+
+  private performUnarmedStrike(aimAngle: number, pool: ProjectilePool): void {
+    // Hard cadence cap prevents rapid clicking or attack-speed buffs from spamming bare-hand strikes
+    this.unarmedCooldownRemaining = PlayerController.UNARMED_COOLDOWN_SEC;
+    this.shootCooldownRemaining = Math.max(
+      this.shootCooldownRemaining,
+      PlayerController.UNARMED_COOLDOWN_SEC
+    );
+
+    const isCrit =
+      this.guaranteedNextCrit ||
+      (this.upgrades.has('critical_focus') && Math.random() < 0.25);
+    this.guaranteedNextCrit = false;
+    const bladeBonus = this.upgrades.has('blade_mastery') ? 2 : 0;
+    const berserkBonus = this.berserkTimer > 0 ? 2 : 0;
+    const radius = WEAPONS.unarmed.range;
+    const arcDegrees = WEAPONS.unarmed.spreadAngle;
+    const damage = (WEAPONS.unarmed.damage + bladeBonus) * (isCrit ? 2 : 1) + berserkBonus;
+
+    audio.playSlash();
+
+    this.meleeSwingTimer = this.meleeSwingDuration;
+    this.weaponSprite?.setTexture('hand_unarmed');
+    this.weaponSprite?.setRotation(aimAngle - 1.13);
+    this.weaponRecoilOffset = -6;
+
+    spawnMeleeSlashTrail(
+      this.scene,
+      this.sprite.x + Math.cos(aimAngle) * 14,
+      this.sprite.y + Math.sin(aimAngle) * 14,
+      aimAngle,
+      radius,
+      0xfef08a
+    );
+
+    if (this.slashSprite) {
+      this.slashSprite.setPosition(
+        this.sprite.x + Math.cos(aimAngle) * 18,
+        this.sprite.y + Math.sin(aimAngle) * 18
+      );
+      this.slashSprite.setRotation(aimAngle);
+      this.slashSprite.setTint(0xfef08a);
+      this.slashSprite.setVisible(true);
+      this.slashTimer = 0.11;
+    }
+
+    const bulletsDestroyed = pool.destroyEnemyBulletsInRadius(
+      this.sprite.x + Math.cos(aimAngle) * 18,
+      this.sprite.y + Math.sin(aimAngle) * 18,
+      radius
+    );
+    if (bulletsDestroyed > 0) {
+      audio.playParryBullet();
+    }
+
+    events.emit('player:melee-swing', {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      angle: aimAngle,
+      radius,
+      arcDeg: arcDegrees,
+      damage,
+      isCrit
+    });
   }
 
   private fireBowArrow(aimAngle: number, pool: ProjectilePool, chargeRatio: number): void {
@@ -2234,6 +2387,7 @@ export class PlayerController {
       q: makeKey(b.swapWeapon, 81),
       e: makeKey(b.interact, 69),
       f: makeKey(b.skill, 70),
+      g: makeKey(b.dropWeapon, 71),
       fire: makeKey(b.fire, 74),
       esc: k.addKey(27)
     };

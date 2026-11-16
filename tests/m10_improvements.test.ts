@@ -33,6 +33,7 @@ import { WEAPON_CORES } from '../src/data/weaponCores';
 import { HEROES, getHeroSkillMeta } from '../src/data/heroes';
 import { UPGRADES } from '../src/data/upgrades';
 import {
+  generateUnarmedTextures,
   generateWeaponAndBarrelTextures,
   spawnMeleeSlashTrail
 } from '../src/presentation/textures/WeaponSlashTextures';
@@ -194,6 +195,7 @@ function createMockScene(options: { runTweensImmediately?: boolean } = {}) {
   const tweens: Array<Record<string, any>> = [];
   const delayedCalls: Array<{ delay: number; cb: Function }> = [];
   const containers: Array<{ x: number; y: number; visible: boolean; children: any[] }> = [];
+  const keyStates = new Map<number, { isDown: boolean; _justDown: boolean }>();
 
   const scene: any = {
     textures: { exists: () => true },
@@ -205,7 +207,12 @@ function createMockScene(options: { runTweensImmediately?: boolean } = {}) {
     },
     input: {
       keyboard: {
-        addKey: () => ({ isDown: false, _justDown: false })
+        addKey: (code: number) => {
+          if (!keyStates.has(code)) {
+            keyStates.set(code, { isDown: false, _justDown: false });
+          }
+          return keyStates.get(code)!;
+        }
       }
     },
     time: {
@@ -335,7 +342,7 @@ function createMockScene(options: { runTweensImmediately?: boolean } = {}) {
     }
   };
 
-  return { scene, sprites, graphics, circles, tweens, delayedCalls, containers };
+  return { scene, sprites, graphics, circles, tweens, delayedCalls, containers, keyStates };
 }
 
 function createFakeEnemy(id: string, x: number, y: number, hp: number = 100) {
@@ -440,6 +447,24 @@ describe('Milestone 10 Improvements Verification Suite', () => {
         { key: 'slash_arc', w: 46, h: 58 }
       ]);
       expect(refreshed).toEqual(['icon_longsword', 'hand_longsword', 'barrel_frost', 'slash_arc']);
+
+      const unarmedCreated: Array<{ key: string; w: number; h: number }> = [];
+      const unarmedRefreshed: string[] = [];
+      generateUnarmedTextures(
+        {} as any,
+        (_tm, key, w, h) => {
+          unarmedCreated.push({ key, w, h });
+          return fakeCtx;
+        },
+        (_tm, key) => {
+          unarmedRefreshed.push(key);
+        }
+      );
+      expect(unarmedCreated).toEqual([
+        { key: 'icon_unarmed', w: 24, h: 24 },
+        { key: 'hand_unarmed', w: 16, h: 10 }
+      ]);
+      expect(unarmedRefreshed).toEqual(['icon_unarmed', 'hand_unarmed']);
     });
 
     it('spawns 3 slash_arc afterimage layers sweeping in fixed direction (-0.85 -> +0.85) and cleans up', () => {
@@ -768,6 +793,102 @@ describe('Milestone 10 Improvements Verification Suite', () => {
           }
         ]
       });
+
+      player.destroy();
+    });
+
+    it('supports dropCurrentWeapon(), [G] drop events, unarmed fallback, and re-equipping slot 0', () => {
+      const { scene, keyStates } = createMockScene({ runTweensImmediately: true });
+      const player = new PlayerController(scene, 100, 100, 'wizard'); // [staff, pistol], active = 0
+      const pool: any = { destroyEnemyBulletsInRadius: vi.fn(() => 0), spawn: vi.fn() };
+      const pointer: any = { isDown: false, worldX: 200, worldY: 100, rightButtonDown: () => false, getDuration: () => 0 };
+
+      expect(player.isUnarmed()).toBe(false);
+      expect(player.getCurrentWeapon().id).toBe('staff');
+
+      // Press [G] (KeyG = 71) to drop active weapon (staff) -> pistol compacts into slot 0
+      const droppedEvents: any[] = [];
+      events.on('player:weapon-dropped', d => droppedEvents.push(d));
+      keyStates.get(71)!._justDown = true;
+      player.update(0.05, pointer, pool, [], []);
+
+      expect(droppedEvents).toHaveLength(1);
+      expect(droppedEvents[0].weapon.id).toBe('staff');
+      expect(player.weaponSlots).toEqual([WEAPONS.pistol, null]);
+      expect(player.activeSlotIndex).toBe(0);
+      expect(player.getCurrentWeapon().id).toBe('pistol');
+      expect(player.isUnarmed()).toBe(false);
+
+      // Drop last remaining weapon (pistol) -> enters Tay Không (unarmed)
+      const secondDrop = player.dropCurrentWeapon();
+      expect(secondDrop?.id).toBe('pistol');
+      expect(player.isUnarmed()).toBe(true);
+      expect(player.weaponSlots).toEqual([null, null]);
+      expect(player.getCurrentWeapon().id).toBe('unarmed');
+      expect(player.forgeCurrentWeapon()).toBeNull();
+      expect(player.dropCurrentWeapon()).toBeNull();
+
+      // Picking up a weapon while unarmed equips into slot 0
+      const replaced = player.equipWeapon(WEAPONS.shotgun);
+      expect(replaced).toBeNull();
+      expect(player.isUnarmed()).toBe(false);
+      expect(player.weaponSlots).toEqual([WEAPONS.shotgun, null]);
+      expect(player.activeSlotIndex).toBe(0);
+
+      player.destroy();
+    });
+
+    it('executes short-range fixed-direction unarmed punches capped at 0.45s and falls back on 0 mana', () => {
+      const { scene, sprites } = createMockScene({ runTweensImmediately: true });
+      const player = new PlayerController(scene, 150, 150, 'wizard'); // [staff (3 NL), pistol]
+      const pool: any = { destroyEnemyBulletsInRadius: vi.fn(() => 0), spawn: vi.fn() };
+      const aimAngle = 0;
+      const attackingPointer: any = {
+        isDown: true,
+        worldX: 250,
+        worldY: 150,
+        rightButtonDown: () => false,
+        getDuration: () => 0
+      };
+
+      const weaponSprite = sprites.find(s => s.texture.key === WEAPONS.staff.handTexture && s.depth === 12)!;
+      expect(weaponSprite).toBeDefined();
+
+      // Drain mana to 0 and apply haste buffs — out-of-mana staff attack should trigger bare-hand punch at hard cap
+      player.stats.energy = 0;
+      player.applyDrinkBuff('haste');
+      const meleeSwings: any[] = [];
+      events.on('player:melee-swing', s => meleeSwings.push(s));
+
+      // First punch triggers with hand_unarmed texture, short range (44), fixed sweep (-1.13 -> +1.13 -> 0)
+      player.update(0.05, attackingPointer, pool, [], []);
+      expect(meleeSwings).toHaveLength(1);
+      expect(meleeSwings[0].radius).toBe(WEAPONS.unarmed.range);
+      expect(meleeSwings[0].damage).toBe(WEAPONS.unarmed.damage);
+      expect(pool.spawn).not.toHaveBeenCalled();
+      expect(weaponSprite.texture.key).toBe('hand_unarmed');
+      expect(weaponSprite.rotation).toBeCloseTo(aimAngle - 1.13, 2);
+
+      // Spam attack clicks rapidly every 0.05s (< 0.45s cap): NO extra strikes should fire
+      for (let i = 0; i < 6; i++) {
+        player.update(0.05, attackingPointer, pool, [], []);
+      }
+      expect(meleeSwings).toHaveLength(1);
+      // After swing duration (> 0.17s) ends while cooldown remains, weaponSprite restores held staff texture at rest angle
+      expect(weaponSprite.texture.key).toBe(WEAPONS.staff.handTexture);
+      expect(weaponSprite.rotation).toBeCloseTo(aimAngle, 5);
+
+      // Finish remaining cooldown (0.30 + 0.15 = 0.45s total) -> second unarmed strike fires!
+      player.update(0.15, attackingPointer, pool, [], []);
+      expect(meleeSwings).toHaveLength(2);
+      expect(weaponSprite.texture.key).toBe('hand_unarmed');
+
+      // Also verify 0-mana bow auto-falls back to unarmed strike instead of stuck charging
+      player.equipWeapon(WEAPONS.bow);
+      player.stats.energy = 0;
+      player.update(0.5, attackingPointer, pool, [], []);
+      expect(meleeSwings).toHaveLength(3);
+      expect(pool.spawn).not.toHaveBeenCalled();
 
       player.destroy();
     });

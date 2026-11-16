@@ -293,6 +293,17 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
+    events.on('player:weapon-dropped', (data: { weapon: WeaponData; x: number; y: number }) => {
+      if (!this.roomManager || !this.player) return;
+      this.floatingNumbers.showNotice(
+        this.player.sprite.x,
+        this.player.sprite.y - 22,
+        `Vứt ${data.weapon.nameVi}`,
+        '#f59e0b'
+      );
+      this.dropReturnedWeapon(data.weapon);
+    });
+
     events.on('combat:explosion', (data: CombatExplosionPayload) => {
       if (!this.roomManager) return;
       resolveCombatExplosion(
@@ -1287,6 +1298,11 @@ export class MainScene extends Phaser.Scene {
         this.roomManager.spawnPickup('weapon_core', px + 26, py + 10, pickRandomWeaponCore());
       }
     } else if (p.type === 'weapon_core') {
+      if (this.player.isUnarmed()) {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 22, 'Cần cầm vũ khí!', '#f59e0b');
+        return;
+      }
       const coreData = p.data as WeaponCoreData | undefined;
       if (!coreData) {
         this.removePickup(p);
@@ -1302,6 +1318,11 @@ export class MainScene extends Phaser.Scene {
       this.effects?.spawnRingBurst(p.sprite.x, p.sprite.y, core.colorNum, 10);
       this.removePickup(p);
     } else if (p.type === 'core_anvil') {
+      if (this.player.isUnarmed()) {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 22, 'Cần cầm vũ khí!', '#f59e0b');
+        return;
+      }
       const cost = p.price || 15;
       if (this.player.spendCoins(cost)) {
         const currentCoreId = this.player.getWeaponCore();
@@ -1393,6 +1414,12 @@ export class MainScene extends Phaser.Scene {
         }
         this.cameras.main.shake(180, 0.009);
         this.removePickup(p);
+        return;
+      }
+
+      if (this.player.isUnarmed()) {
+        audio.playGlassBreak();
+        this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 22, 'Cần cầm vũ khí!', '#f59e0b');
         return;
       }
 
