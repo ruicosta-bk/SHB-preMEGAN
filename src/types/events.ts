@@ -4,6 +4,8 @@ import { RoomState } from './room';
 import { HeroId, SkillVariant } from '../data/heroes';
 import { DifficultyMode } from '../data/difficulty';
 import { ControlSettingsState } from '../core/ControlSettings';
+import type { PlayerInspectSnapshot } from '../ui/CharacterInspectModal';
+import type { HazardZoneConfig } from '../combat/HazardZoneManager';
 
 export interface GameEvents {
   // Player state
@@ -25,13 +27,24 @@ export interface GameEvents {
   'player:died': void;
   'player:turret-spawned': { x: number; y: number };
   'player:skill-status-vortex': { x: number; y: number; radius: number };
+  'player:inspect-request': void;
+  'player:inspect-snapshot': PlayerInspectSnapshot;
 
   // Combat
   'combat:enemy-hit': { enemyId: string; damage: number; isCrit: boolean; x: number; y: number; element?: string };
   'combat:enemy-died': { enemyId: string; x: number; y: number; type: string };
   'combat:bullet-destroyed': { x: number; y: number };
   'combat:boss-stats': { currentHp: number; maxHp: number; phase: number; nameVi: string; isDead: boolean };
-  'combat:explosion': { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' | 'poison' };
+  'combat:explosion': {
+    x: number;
+    y: number;
+    radius: number;
+    damage: number;
+    element?: 'fire' | 'frost' | 'physical' | 'poison';
+    spawnHazardZone?: boolean;
+    hurtsPlayer?: boolean;
+  };
+  'combat:spawn-hazard-zone': HazardZoneConfig;
   'combat:lightning-arc': { fromX: number; fromY: number; toX: number; toY: number };
 
   // Room & Exploration

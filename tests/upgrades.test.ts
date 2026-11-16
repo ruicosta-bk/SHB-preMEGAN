@@ -198,18 +198,18 @@ describe('Upgrade System Unit Tests', () => {
       return dropped;
     };
 
-    // Normal enemy: coinCount roll=0.6 (1 coin -> 2 offset rngs), energy roll=0.30, heart roll=0.90
+    // Normal enemy: coinCount roll=0.2 (< 0.55 -> 1 coin -> 2 offset rngs), energy roll=0.30, heart roll=0.90
     // At 0 stacks (threshold 0.24): 0.30 does NOT drop energy
-    expect(runRoll(false, 0, [0.6, 0.5, 0.5, 0.30, 0.9])).not.toContain('energy');
+    expect(runRoll(false, 0, [0.2, 0.5, 0.5, 0.30, 0.9])).not.toContain('energy');
     // At 1 stack (threshold 0.36): 0.30 DOES drop energy
-    expect(runRoll(false, 1, [0.6, 0.5, 0.5, 0.30, 0.9])).toContain('energy');
+    expect(runRoll(false, 1, [0.2, 0.5, 0.5, 0.30, 0.9])).toContain('energy');
 
     // Roll 0.42 misses at 1 stack (0.36) but hits at 2 stacks (0.48)
-    expect(runRoll(false, 1, [0.6, 0.5, 0.5, 0.42, 0.9])).not.toContain('energy');
-    expect(runRoll(false, 2, [0.6, 0.5, 0.5, 0.42, 0.9])).toContain('energy');
+    expect(runRoll(false, 1, [0.2, 0.5, 0.5, 0.42, 0.9])).not.toContain('energy');
+    expect(runRoll(false, 2, [0.2, 0.5, 0.5, 0.42, 0.9])).toContain('energy');
 
-    // Elite at 2 stacks has 100% energy drop even on high roll (0.999) while heart chance remains independent
-    const eliteMaxStackDrops = runRoll(true, 2, [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.999, 0.2]);
+    // Elite (2 coins -> 4 offset rngs) at 2 stacks has 100% energy drop even on high roll (0.999) while heart chance remains independent
+    const eliteMaxStackDrops = runRoll(true, 2, [0.5, 0.5, 0.5, 0.5, 0.999, 0.2]);
     expect(eliteMaxStackDrops).toContain('energy');
     expect(eliteMaxStackDrops).toContain('heart');
 

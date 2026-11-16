@@ -3,7 +3,7 @@ import { TextureGenerator } from '../presentation/TextureGenerator';
 import { EffectsManager, STATUS_ELEMENT_COLORS, StatusElement } from '../presentation/EffectsManager';
 import { DungeonGenerator } from '../world/DungeonGenerator';
 import { RoomManager, PickupItem } from '../world/RoomManager';
-import { resolveCombatExplosion } from '../world/InteractiveProps';
+import { CombatExplosionPayload, resolveCombatExplosion } from '../world/InteractiveProps';
 import { PlayerController } from '../player/PlayerController';
 import { PetController } from '../player/PetController';
 import { TurretEntity } from '../player/TurretEntity';
@@ -11,6 +11,7 @@ import { HeroId, SkillVariant, HEROES, getHeroSkillMeta } from '../data/heroes';
 import { DifficultyMode, getFloorEnemyScale } from '../data/difficulty';
 import { getFloorMeta, TOTAL_FLOORS } from '../data/biomes';
 import { ProjectilePool } from '../combat/ProjectilePool';
+import { HazardZoneConfig, HazardZoneManager } from '../combat/HazardZoneManager';
 import { StatusManager } from '../combat/StatusManager';
 import { FloatingNumbers } from '../ui/FloatingNumbers';
 import { UIScene } from './UIScene';
@@ -104,6 +105,7 @@ export class MainScene extends Phaser.Scene {
   private roomManager!: RoomManager;
   private floatingNumbers!: FloatingNumbers;
   private effects!: EffectsManager;
+  private hazardZones!: HazardZoneManager;
   private uiScene!: UIScene;
 
   // Game state
@@ -144,10 +146,11 @@ export class MainScene extends Phaser.Scene {
     // 1. Generate all textures procedurally
     TextureGenerator.generateAll(this);
 
-    // 2. Initialize Projectile Pool, Effects Pool & World Systems
+    // 2. Initialize Projectile Pool, Effects Pool, Hazard Zones & World Systems
     this.projectilePool = new ProjectilePool(this);
     this.floatingNumbers = new FloatingNumbers(this);
     this.effects = new EffectsManager(this, 96);
+    this.hazardZones = new HazardZoneManager(this);
 
     // 3. Launch UI Scene in parallel
     this.scene.launch('UIScene');
@@ -224,7 +227,7 @@ export class MainScene extends Phaser.Scene {
         audio.playRoomClear();
         this.cameras.main.shake(350, 0.02);
         if (this.roomManager) {
-          for (let i = 0; i < 15; i++) {
+          for (let i = 0; i < 8; i++) {
             const rx = data.x + (Math.random() - 0.5) * 90;
             const ry = data.y + (Math.random() - 0.5) * 90;
             this.roomManager.spawnPickup('coin', rx, ry, 1);
@@ -290,15 +293,41 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
-    events.on('combat:explosion', (data: { x: number; y: number; radius: number; damage: number; element?: 'fire' | 'frost' | 'physical' | 'poison' }) => {
+    events.on('combat:explosion', (data: CombatExplosionPayload) => {
       if (!this.roomManager) return;
       resolveCombatExplosion(
         data,
         this.roomManager.activeEnemies,
         this.roomManager.interactiveProps,
         this.projectilePool,
-        (cx, cy) => this.spawnCrateLoot(cx, cy)
+        (cx, cy) => this.spawnCrateLoot(cx, cy),
+        this.player
       );
+
+      if (data.spawnHazardZone && this.hazardZones) {
+        const zoneElement: 'fire' | 'poison' | 'frost' =
+          data.element === 'poison' || data.element === 'frost' ? data.element : 'fire';
+        this.hazardZones.spawnZone({
+          x: data.x,
+          y: data.y,
+          radius: Math.max(58, Math.round(data.radius * 0.8)),
+          element: zoneElement,
+          duration: 3.5,
+          affectsPlayer: true,
+          damagePerTick: zoneElement === 'frost' ? 0 : 1
+        });
+      }
+    });
+
+    events.on('combat:spawn-hazard-zone', (config: HazardZoneConfig) => {
+      if (!this.isGameRunning || !this.hazardZones) return;
+      this.hazardZones.spawnZone(config);
+    });
+
+    events.on('player:inspect-request', () => {
+      if (this.player) {
+        events.emit('player:inspect-snapshot', this.player.getInspectSnapshot());
+      }
     });
 
     events.on('player:laser-beam', (data: {
@@ -492,6 +521,7 @@ export class MainScene extends Phaser.Scene {
     this.floatingNumbers?.hidePrompt();
     this.projectilePool?.clearAll();
     this.effects?.clearAll();
+    this.hazardZones?.clearAll();
     this.tweens?.killAll();
     this.time?.removeAllEvents();
     this.clearTurrets();
@@ -601,6 +631,7 @@ export class MainScene extends Phaser.Scene {
       this.currentFloor += 1;
       this.projectilePool.clearAll();
       this.effects?.clearAll();
+      this.hazardZones?.clearAll();
       this.clearTurrets();
       if (this.roomManager) {
         this.roomManager.clearCurrentRoomVisuals();
@@ -800,7 +831,8 @@ export class MainScene extends Phaser.Scene {
     // 5. Check Projectile Collisions
     this.checkProjectileHits();
 
-    // 6. Update Pooled VFX & Check Pickups Proximity
+    // 6. Update Hazard Zones, Pooled VFX & Check Pickups Proximity
+    this.hazardZones?.update(deltaSec, this.roomManager.activeEnemies, this.player);
     this.effects?.update(deltaSec);
     this.updatePickupsProximity(deltaSec);
   }
@@ -811,6 +843,7 @@ export class MainScene extends Phaser.Scene {
       if (progress >= 1) {
         this.projectilePool.clearAll();
         this.effects?.clearAll();
+        this.hazardZones?.clearAll();
         this.clearTurrets();
         this.player.sprite.setPosition(spawnX, spawnY);
         this.camLookAheadX = 0;
@@ -1208,7 +1241,7 @@ export class MainScene extends Phaser.Scene {
 
       this.removePickup(p);
       if (returnedWeapon) {
-        this.roomManager.spawnPickup('weapon', this.player.sprite.x, this.player.sprite.y, returnedWeapon);
+        this.dropReturnedWeapon(returnedWeapon);
       }
     } else if (p.type === 'boss_chest') {
       audio.playPickup();
@@ -1239,6 +1272,7 @@ export class MainScene extends Phaser.Scene {
         WEAPONS.repeater,
         WEAPONS.penetrator,
         WEAPONS.blade,
+        WEAPONS.longsword,
         WEAPONS.bow,
         WEAPONS.laser,
         WEAPONS.staff
@@ -1335,14 +1369,28 @@ export class MainScene extends Phaser.Scene {
         this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Không đủ Vàng!', '#ef4444');
       }
     } else if (p.type === 'forge') {
-      const merged = this.player.mergeWeapons();
-      if (merged) {
+      const mergeOutcome = this.player.mergeEquippedWeapons();
+      if (mergeOutcome) {
         this.floatingNumbers.showNotice(
           p.sprite.x,
           p.sprite.y - 24,
-          `HỢP NHẤT: ${merged.nameVi}!`,
+          `HỢP NHẤT: ${mergeOutcome.result.nameVi}!`,
           '#38bdf8'
         );
+        if (mergeOutcome.overflowCore) {
+          this.roomManager.spawnPickup(
+            'weapon_core',
+            this.player.sprite.x + 24,
+            this.player.sprite.y + 6,
+            mergeOutcome.overflowCore
+          );
+          this.floatingNumbers.showNotice(
+            this.player.sprite.x + 24,
+            this.player.sprite.y - 42,
+            `Rơi ${mergeOutcome.overflowCore.nameVi}`,
+            mergeOutcome.overflowCore.colorHex
+          );
+        }
         this.cameras.main.shake(180, 0.009);
         this.removePickup(p);
         return;
@@ -1383,7 +1431,7 @@ export class MainScene extends Phaser.Scene {
         } else if (p.data.subType === 'weapon') {
           const oldW = this.player.equipWeapon(p.data.weapon);
           if (oldW) {
-            this.roomManager.spawnPickup('weapon', this.player.sprite.x, this.player.sprite.y, oldW);
+            this.dropReturnedWeapon(oldW);
           }
           this.floatingNumbers.showNotice(this.player.sprite.x, this.player.sprite.y - 20, 'Trang bị Vũ khí mới!', '#f59e0b');
         }
@@ -1402,6 +1450,21 @@ export class MainScene extends Phaser.Scene {
     if (lenSq === 0) return Math.hypot(px - x1, py - y1);
     const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
     return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  private dropReturnedWeapon(returnedWeapon: WeaponData): void {
+    this.roomManager.spawnPickup('weapon', this.player.sprite.x, this.player.sprite.y, returnedWeapon);
+    const stillEquipped = this.player.weaponSlots.some(w => w?.id === returnedWeapon.id);
+    const detachedCore = stillEquipped ? null : this.player.detachWeaponCore(returnedWeapon.id);
+    if (detachedCore) {
+      this.roomManager.spawnPickup('weapon_core', this.player.sprite.x + 24, this.player.sprite.y + 6, detachedCore);
+      this.floatingNumbers.showNotice(
+        this.player.sprite.x + 24,
+        this.player.sprite.y - 24,
+        `Tháo ${detachedCore.nameVi} từ ${returnedWeapon.nameVi}`,
+        detachedCore.colorHex
+      );
+    }
   }
 
   private removePickup(pickup: PickupItem): void {

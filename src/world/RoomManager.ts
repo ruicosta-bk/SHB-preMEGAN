@@ -288,11 +288,23 @@ export class RoomManager {
         this.interactiveProps.spawnProp('crate', cx, cy);
       }
 
-      // Add explosive & toxic barrels in combat rooms
+      // Add biome-themed hazard barrels in combat rooms
       if (room.type === 'combat') {
-        this.interactiveProps.spawnProp('explosive', room.worldX + ts * 2.5, room.worldY + ts * 2.5);
-        this.interactiveProps.spawnProp('toxic', room.worldX + room.width - ts * 2.5, room.worldY + ts * 2.5);
-        this.interactiveProps.spawnProp('explosive', room.worldX + room.width - ts * 2.5, room.worldY + room.height - ts * 2.5);
+        const biome = room.biomeId ?? this.floorMeta.biomeId;
+        const barrelSlots = [
+          { x: room.worldX + ts * 2.5, y: room.worldY + ts * 2.5 },
+          { x: room.worldX + room.width - ts * 2.5, y: room.worldY + room.height - ts * 2.5 },
+          { x: room.worldX + room.width - ts * 2.5, y: room.worldY + ts * 2.5 }
+        ];
+        const barrelTypes: ('explosive' | 'toxic' | 'frost')[] =
+          biome === 'frost_cavern'
+            ? ['frost', 'toxic']
+            : biome === 'molten_core'
+              ? ['explosive', 'explosive', 'toxic']
+              : ['explosive', 'toxic'];
+        barrelTypes.forEach((bType, idx) => {
+          this.interactiveProps.spawnProp(bType, barrelSlots[idx].x, barrelSlots[idx].y);
+        });
       }
 
       // Create 3-tile door threshold visuals (starts open until player enters uncleared room)
@@ -747,7 +759,7 @@ export class RoomManager {
     energyCapacitorStacks: number = 0,
     rng: () => number = Math.random
   ): void {
-    const coinCount = isElite ? 4 : rng() < 0.4 ? 2 : 1;
+    const coinCount = isElite ? 2 : rng() < 0.55 ? 1 : 0;
     for (let c = 0; c < coinCount; c++) {
       this.spawnPickup('coin', x + (rng() - 0.5) * 22, y + (rng() - 0.5) * 22, 1);
     }

@@ -4,6 +4,7 @@ export type WeaponId =
   | 'repeater'
   | 'penetrator'
   | 'blade'
+  | 'longsword'
   | 'bow'
   | 'laser'
   | 'staff'

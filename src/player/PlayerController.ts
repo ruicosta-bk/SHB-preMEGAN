@@ -15,6 +15,8 @@ import { audio } from '../core/AudioSystem';
 import { controlSettings, codeToPhaserKeyCode } from '../core/ControlSettings';
 import { MetaBonuses } from '../core/MetaProgression';
 import { EffectsManager } from '../presentation/EffectsManager';
+import { spawnMeleeSlashTrail } from '../presentation/textures/WeaponSlashTextures';
+import type { PlayerInspectSnapshot } from '../ui/CharacterInspectModal';
 
 export class PlayerController {
   public scene: Phaser.Scene;
@@ -102,13 +104,20 @@ export class PlayerController {
   private reflectShieldTimer: number = 0;
   private reflectShieldGfx: Phaser.GameObjects.Graphics | null = null;
   private frostSlowTimer: number = 0;
+  private burnStatusTimer: number = 0;
+  private burnTickTimer: number = 0;
+  private poisonStatusTimer: number = 0;
+  private poisonTickTimer: number = 0;
+  private statusJitterTimer: number = 0;
   private bowChargeTime: number = 0;
   private isChargingBow: boolean = false;
   private bowChargeGfx: Phaser.GameObjects.Graphics | null = null;
 
-  // Slash visual representation
+  // Slash visual representation & fixed-direction melee swing
   private slashSprite: Phaser.GameObjects.Sprite | null = null;
   private slashTimer: number = 0;
+  private meleeSwingTimer: number = 0;
+  private readonly meleeSwingDuration: number = 0.17;
 
   // Held weapon & muzzle flash (360-degree aim + Knight Dual Wield off-hand weapon)
   private weaponSprite: Phaser.GameObjects.Sprite;
@@ -253,6 +262,7 @@ export class PlayerController {
   public swapWeaponSlot(): void {
     if (this.weaponSlots[1] !== null) {
       this.activeSlotIndex = this.activeSlotIndex === 0 ? 1 : 0;
+      this.meleeSwingTimer = 0;
       this.emitWeaponChange();
       audio.playPickup();
     }
@@ -335,6 +345,14 @@ export class PlayerController {
     return { weapon, core };
   }
 
+  public detachWeaponCore(weaponId: WeaponId): WeaponCoreData | null {
+    const coreId = this.weaponCores.get(weaponId);
+    if (!coreId) return null;
+    this.weaponCores.delete(weaponId);
+    this.emitWeaponChange();
+    return getWeaponCore(coreId);
+  }
+
   public setEffectsManager(fx: EffectsManager): void {
     this.effects = fx;
   }
@@ -361,14 +379,84 @@ export class PlayerController {
     return { first, second, result };
   }
 
-  public mergeWeapons(): WeaponData | null {
+  public mergeEquippedWeapons(): {
+    first: WeaponData;
+    second: WeaponData;
+    result: WeaponData;
+    overflowCore: WeaponCoreData | null;
+  } | null {
     const preview = this.getMergePreview();
     if (!preview) return null;
+
+    const firstCoreId = this.weaponCores.get(preview.first.id) ?? null;
+    const secondCoreId = this.weaponCores.get(preview.second.id) ?? null;
+    const primaryCoreId = firstCoreId ?? secondCoreId;
+    const overflowCoreId = firstCoreId && secondCoreId ? secondCoreId : null;
+
+    this.weaponCores.delete(preview.first.id);
+    this.weaponCores.delete(preview.second.id);
+    if (primaryCoreId) {
+      this.weaponCores.set(preview.result.id, primaryCoreId);
+    }
+
     this.weaponSlots = [preview.result, null];
     this.activeSlotIndex = 0;
+    this.meleeSwingTimer = 0;
     this.emitWeaponChange();
     audio.playMergeSuccess();
-    return preview.result;
+
+    return {
+      first: preview.first,
+      second: preview.second,
+      result: preview.result,
+      overflowCore: getWeaponCore(overflowCoreId)
+    };
+  }
+
+  public mergeWeapons(): WeaponData | null {
+    return this.mergeEquippedWeapons()?.result ?? null;
+  }
+
+  public getInspectSnapshot(): PlayerInspectSnapshot {
+    const skillMeta = getHeroSkillMeta(this.heroId, this.skillVariant);
+    const weapons: PlayerInspectSnapshot['weapons'] = [];
+    this.weaponSlots.forEach((weapon, idx) => {
+      if (!weapon) return;
+      const core = getWeaponCore(this.getWeaponCore(weapon.id));
+      weapons.push({
+        nameVi: weapon.nameVi,
+        forgeLevel: this.getForgeLevel(weapon.id),
+        coreNameVi: core ? core.nameVi : null,
+        coreColorHex: core?.colorHex,
+        isActive: idx === this.activeSlotIndex
+      });
+    });
+
+    const upgrades: PlayerInspectSnapshot['upgrades'] = [];
+    for (const [id, stacks] of this.upgrades.entries()) {
+      if (stacks <= 0) continue;
+      const meta = UPGRADES[id];
+      if (!meta) continue;
+      upgrades.push({
+        id: meta.id,
+        nameVi: meta.nameVi,
+        descVi: meta.descriptionVi,
+        stacks,
+        maxStacks: meta.maxStacks
+      });
+    }
+
+    return {
+      heroId: this.heroId,
+      heroNameVi: this.heroConfig.nameVi,
+      skillVariant: this.skillVariant,
+      skillNameVi: skillMeta.nameVi,
+      skillCooldownSec: this.skillCooldownMax,
+      skillDescVi: skillMeta.descVi,
+      statueBlessing: this.statueBlessing,
+      weapons,
+      upgrades
+    };
   }
 
   public applyDrinkBuff(kind: 'vitality' | 'energy' | 'haste'): string {
@@ -415,6 +503,13 @@ export class PlayerController {
     this.bowChargeTime = 0;
     this.bowChargeGfx?.clear();
     this.frostSlowTimer = 0;
+    this.burnStatusTimer = 0;
+    this.burnTickTimer = 0;
+    this.poisonStatusTimer = 0;
+    this.poisonTickTimer = 0;
+    this.statusJitterTimer = 0;
+    this.meleeSwingTimer = 0;
+    this.sprite.setRotation?.(0);
     this.dualWieldTimer = 0;
     this.overdriveTimer = 0;
     this.berserkTimer = 0;
@@ -443,12 +538,42 @@ export class PlayerController {
     this.refreshActiveTint();
   }
 
+  public applyHazardExposure(element: 'fire' | 'poison' | 'frost'): void {
+    if (this.isDead) return;
+    if (element === 'frost') {
+      this.applyFrostSlow(2.2);
+      return;
+    }
+    if (element === 'fire') {
+      if (this.burnStatusTimer <= 0) {
+        this.burnTickTimer = 0.8;
+      }
+      this.burnStatusTimer = Math.max(this.burnStatusTimer, 2.4);
+      this.statusJitterTimer = 0.16;
+      this.refreshActiveTint();
+      return;
+    }
+    if (element === 'poison') {
+      if (this.poisonStatusTimer <= 0) {
+        this.poisonTickTimer = 0.9;
+      }
+      this.poisonStatusTimer = Math.max(this.poisonStatusTimer, 2.8);
+      this.statusJitterTimer = 0.16;
+      this.refreshActiveTint();
+    }
+  }
+
   private refreshActiveTint(): void {
     if (this.isDead) {
       this.sprite.setTint(0xef4444);
       return;
     }
-    if (this.frostSlowTimer > 0) {
+    if (this.burnStatusTimer > 0) {
+      const burnTint = Math.floor(this.burnStatusTimer * 10) % 2 === 0 ? 0xf97316 : 0xef4444;
+      this.sprite.setTint(burnTint);
+    } else if (this.poisonStatusTimer > 0) {
+      this.sprite.setTint(0x4ade80);
+    } else if (this.frostSlowTimer > 0) {
       this.sprite.setTint(0x7dd3fc);
     } else if (this.berserkTimer > 0) {
       this.sprite.setTint(0xfca5a5);
@@ -594,10 +719,55 @@ export class PlayerController {
     }
     if (this.invulnerableTimer > 0) {
       this.invulnerableTimer -= deltaSec;
+      if (this.invulnerableTimer <= 1e-6) {
+        this.invulnerableTimer = 0;
+      }
       // Visual flash
-      this.sprite.setVisible(Math.floor(this.invulnerableTimer * 15) % 2 === 0);
+      this.sprite.setVisible(this.invulnerableTimer <= 0 || Math.floor(this.invulnerableTimer * 15) % 2 === 0);
     } else {
       this.sprite.setVisible(true);
+    }
+
+    if (this.burnStatusTimer > 0) {
+      const prevBurn = this.burnStatusTimer;
+      this.burnStatusTimer = Math.max(0, prevBurn - deltaSec);
+      this.burnTickTimer -= Math.min(deltaSec, prevBurn);
+      if (this.burnTickTimer <= 1e-6) {
+        const hit = this.takeDamage({ amount: 1, element: 'fire', isPlayerAttack: false });
+        if (this.isDead) return;
+        if (hit !== null) {
+          this.statusJitterTimer = 0.16;
+          this.burnTickTimer = 0.8;
+        } else {
+          this.burnTickTimer = 0;
+        }
+      }
+      if (this.burnStatusTimer <= 1e-6) {
+        this.burnStatusTimer = 0;
+        this.burnTickTimer = 0;
+      }
+      this.refreshActiveTint();
+    }
+
+    if (this.poisonStatusTimer > 0) {
+      const prevPoison = this.poisonStatusTimer;
+      this.poisonStatusTimer = Math.max(0, prevPoison - deltaSec);
+      this.poisonTickTimer -= Math.min(deltaSec, prevPoison);
+      if (this.poisonTickTimer <= 1e-6) {
+        const hit = this.takeDamage({ amount: 1, element: 'poison', isPlayerAttack: false });
+        if (this.isDead) return;
+        if (hit !== null) {
+          this.statusJitterTimer = 0.16;
+          this.poisonTickTimer = 0.9;
+        } else {
+          this.poisonTickTimer = 0;
+        }
+      }
+      if (this.poisonStatusTimer <= 1e-6) {
+        this.poisonStatusTimer = 0;
+        this.poisonTickTimer = 0;
+      }
+      this.refreshActiveTint();
     }
 
     // Armor Regen
@@ -753,10 +923,19 @@ export class PlayerController {
       this.sprite.y = nextY;
     }
 
-    // Subtle Soul Knight breathing / walk bounce squash-and-stretch
+    // Subtle Soul Knight breathing / walk bounce squash-and-stretch + status jitter
     this.bobTimer += deltaSec * (moveLen > 0 ? 14 : 5.5);
     const stretch = Math.sin(this.bobTimer) * (moveLen > 0 ? 0.06 : 0.035);
     this.sprite.setScale(1 - stretch * 0.5, 1 + stretch);
+
+    if (this.statusJitterTimer > 0) {
+      this.statusJitterTimer = Math.max(0, this.statusJitterTimer - deltaSec);
+      if (this.statusJitterTimer > 0) {
+        this.sprite.setRotation?.(Math.sin(this.statusJitterTimer * 45) * 0.14);
+      } else {
+        this.sprite.setRotation?.(0);
+      }
+    }
 
     // Update shadow position
     this.shadow.setPosition(this.sprite.x, this.sprite.y + 11);
@@ -781,7 +960,7 @@ export class PlayerController {
       }
     }
 
-    // Update 360-degree held weapon(s) & recoil spring
+    // Update 360-degree held weapon(s), melee swing sweep & recoil spring
     this.weaponRecoilOffset = Phaser.Math.Linear(this.weaponRecoilOffset, 0, Math.min(1, deltaSec * 18));
     const holdRadius = Math.max(4, 12 - this.weaponRecoilOffset);
     const perpX = -Math.sin(aimAngle);
@@ -789,10 +968,20 @@ export class PlayerController {
     const isDualActive = this.dualWieldTimer > 0;
     const sep = isDualActive ? 7 : 0;
 
-    const wx = this.sprite.x + Math.cos(aimAngle) * holdRadius + perpX * sep;
-    const wy = this.sprite.y + 3 + Math.sin(aimAngle) * holdRadius + perpY * sep;
+    let swingOffset = 0;
+    if (this.meleeSwingTimer > 0) {
+      this.meleeSwingTimer = Math.max(0, this.meleeSwingTimer - deltaSec);
+      if (this.meleeSwingTimer > 0) {
+        const progress = 1 - this.meleeSwingTimer / this.meleeSwingDuration;
+        swingOffset = -1.13 + progress * 2.26;
+      }
+    }
+    const weaponAngle = aimAngle + swingOffset;
+
+    const wx = this.sprite.x + Math.cos(weaponAngle) * holdRadius + perpX * sep;
+    const wy = this.sprite.y + 3 + Math.sin(weaponAngle) * holdRadius + perpY * sep;
     this.weaponSprite.setPosition(wx, wy);
-    this.weaponSprite.setRotation(aimAngle);
+    this.weaponSprite.setRotation(weaponAngle);
     this.weaponSprite.setFlipY(Math.cos(aimAngle) < 0);
     this.weaponSprite.setVisible(this.sprite.visible);
     if (isDualActive) {
@@ -802,10 +991,10 @@ export class PlayerController {
     }
 
     if (isDualActive) {
-      const owx = this.sprite.x + Math.cos(aimAngle) * (holdRadius - 1) - perpX * sep;
-      const owy = this.sprite.y + 3 + Math.sin(aimAngle) * (holdRadius - 1) - perpY * sep;
+      const owx = this.sprite.x + Math.cos(weaponAngle) * (holdRadius - 1) - perpX * sep;
+      const owy = this.sprite.y + 3 + Math.sin(weaponAngle) * (holdRadius - 1) - perpY * sep;
       this.offhandWeaponSprite.setPosition(owx, owy);
-      this.offhandWeaponSprite.setRotation(aimAngle);
+      this.offhandWeaponSprite.setRotation(weaponAngle);
       this.offhandWeaponSprite.setFlipY(Math.cos(aimAngle) < 0);
       this.offhandWeaponSprite.setTint(0xfdba74);
       this.offhandWeaponSprite.setVisible(this.sprite.visible);
@@ -998,6 +1187,23 @@ export class PlayerController {
 
       audio.playSlash();
 
+      const slashTint =
+        effectiveElement === 'frost'
+          ? 0x67e8f9
+          : attachedCore
+            ? attachedCore.colorNum
+            : undefined;
+      this.meleeSwingTimer = this.meleeSwingDuration;
+      this.weaponSprite?.setRotation(aimAngle - 1.13);
+      spawnMeleeSlashTrail(
+        this.scene,
+        this.sprite.x + Math.cos(aimAngle) * 20,
+        this.sprite.y + Math.sin(aimAngle) * 20,
+        aimAngle,
+        radius,
+        slashTint
+      );
+
       // Show slash visual
       if (this.slashSprite) {
         this.slashSprite.setPosition(
@@ -1005,10 +1211,8 @@ export class PlayerController {
           this.sprite.y + Math.sin(aimAngle) * 24
         );
         this.slashSprite.setRotation(aimAngle);
-        if (effectiveElement === 'frost') {
-          this.slashSprite.setTint(0x67e8f9);
-        } else if (attachedCore) {
-          this.slashSprite.setTint(attachedCore.colorNum);
+        if (slashTint !== undefined) {
+          this.slashSprite.setTint(slashTint);
         } else {
           this.slashSprite.clearTint();
         }
@@ -1861,8 +2065,17 @@ export class PlayerController {
           onComplete: () => blast.destroy()
         });
 
-        // Emit explosion event (rebalanced Alchemist flask damage)
+        // Emit explosion event (rebalanced Alchemist flask damage) + persistent fire puddle
         events.emit('combat:explosion', { x: targetX, y: targetY, radius: 80, damage: 14 });
+        events.emit('combat:spawn-hazard-zone', {
+          x: targetX,
+          y: targetY,
+          radius: 75,
+          element: 'fire',
+          duration: 4.0,
+          affectsPlayer: false,
+          damagePerTick: 3
+        });
       }
     });
   }
@@ -1927,6 +2140,16 @@ export class PlayerController {
         }
 
         events.emit('combat:explosion', { x: targetX, y: targetY, radius: 95, damage: 16, element: 'frost' });
+        events.emit('combat:spawn-hazard-zone', {
+          x: targetX,
+          y: targetY,
+          radius: 85,
+          element: 'poison',
+          applyChill: true,
+          duration: 4.5,
+          affectsPlayer: false,
+          damagePerTick: 2
+        });
       }
     });
   }

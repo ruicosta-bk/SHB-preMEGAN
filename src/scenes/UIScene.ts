@@ -5,9 +5,11 @@ import { PauseModal } from '../ui/PauseModal';
 import { UpgradeSelectModal } from '../ui/UpgradeSelectModal';
 import { GameOverModal, RunStats } from '../ui/GameOverModal';
 import { SettingsModal } from '../ui/SettingsModal';
+import { CharacterInspectModal, PlayerInspectSnapshot } from '../ui/CharacterInspectModal';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
-import { HeroId, SkillVariant } from '../data/heroes';
+import { HEROES, HeroId, SkillVariant, getHeroSkillMeta } from '../data/heroes';
+import { WEAPONS } from '../data/weapons';
 import { DifficultyMode } from '../data/difficulty';
 
 export class UIScene extends Phaser.Scene {
@@ -17,6 +19,9 @@ export class UIScene extends Phaser.Scene {
   public upgradeModal!: UpgradeSelectModal;
   public gameOverModal!: GameOverModal;
   public settingsModal!: SettingsModal;
+  public inspectModal!: CharacterInspectModal;
+  private inspectButtonContainer: Phaser.GameObjects.Container | null = null;
+  private latestInspectSnapshot: PlayerInspectSnapshot | null = null;
   private selectedHeroId: HeroId = 'alchemist';
   private selectedSkillVariant: SkillVariant = 1;
   private selectedDifficultyMode: DifficultyMode = 'normal';
@@ -38,8 +43,10 @@ export class UIScene extends Phaser.Scene {
     this.upgradeModal = new UpgradeSelectModal(this);
     this.gameOverModal = new GameOverModal(this);
     this.settingsModal = new SettingsModal(this);
+    this.inspectModal = new CharacterInspectModal(this);
 
     this.createSettingsGearButton();
+    this.createInspectButton();
 
     // FPS & Performance monitor
     const fpsText = this.add.text(1260, 146, 'FPS: 60', {
@@ -88,6 +95,21 @@ export class UIScene extends Phaser.Scene {
       });
     });
 
+    events.on('player:inspect-snapshot', (snapshot: PlayerInspectSnapshot) => {
+      this.latestInspectSnapshot = snapshot;
+      if (this.inspectModal?.isOpen) {
+        this.inspectModal.show(snapshot, () => this.handleInspectClosed());
+      }
+    });
+
+    events.on('game:restart', () => {
+      this.latestInspectSnapshot = null;
+      if (this.inspectModal?.isOpen) {
+        this.inspectModal.hide();
+      }
+      this.inspectButtonContainer?.setVisible(!this.titleScreen?.isOpen);
+    });
+
     events.on('game:pause-toggled', (data: { isPaused: boolean; onResume: () => void; onRestart: () => void }) => {
       if (data.isPaused) {
         this.activePauseResume = data.onResume;
@@ -99,7 +121,9 @@ export class UIScene extends Phaser.Scene {
           () => {
             this.activePauseResume = null;
             data.onRestart();
-          }
+          },
+          this.selectedHeroId,
+          this.selectedSkillVariant
         );
       } else {
         this.activePauseResume = null;
@@ -107,16 +131,23 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
-    // Single Esc listener lives in UIScene so pause/unpause works even while MainScene is paused
+    // Single Esc & Tab listeners live in UIScene so modals work even while MainScene is paused
     this.input.keyboard?.on('keydown-ESC', () => this.handleEscKey());
+    this.input.keyboard?.on('keydown-TAB', (event?: KeyboardEvent) => {
+      if (this.titleScreen?.isOpen || this.settingsModal?.isOpen) return;
+      event?.preventDefault?.();
+      this.handleTabKey();
+    });
   }
 
-  private createSettingsGearButton(): void {
-    const x = 902;
-    const y = 34;
-    const w = 76;
-    const h = 34;
-
+  private createTopBarButton(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    text: string,
+    onClick: () => void
+  ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y).setDepth(320).setScrollFactor(0);
     const bg = this.add.graphics();
     const drawBg = (hovered: boolean) => {
@@ -129,7 +160,7 @@ export class UIScene extends Phaser.Scene {
     drawBg(false);
     container.add(bg);
 
-    const label = this.add.text(0, 0, '⚙️ Phím', {
+    const label = this.add.text(0, 0, text, {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '12px',
       color: '#e2e8f0',
@@ -140,7 +171,13 @@ export class UIScene extends Phaser.Scene {
     const zone = this.add.zone(0, 0, w, h).setInteractive({ useHandCursor: true });
     zone.on('pointerover', () => drawBg(true));
     zone.on('pointerout', () => drawBg(false));
-    zone.on('pointerdown', () => {
+    zone.on('pointerdown', onClick);
+    container.add(zone);
+    return container;
+  }
+
+  private createSettingsGearButton(): void {
+    this.createTopBarButton(902, 34, 76, 34, '⚙️ Phím', () => {
       audio.playPickup();
       if (this.settingsModal.isOpen) {
         this.settingsModal.hide();
@@ -149,7 +186,68 @@ export class UIScene extends Phaser.Scene {
         this.openSettingsModal();
       }
     });
-    container.add(zone);
+  }
+
+  private createInspectButton(): void {
+    // Positioned at x:300, y:34 (visible only during runs, clear of HUD stats 16..246 & bossBar 420..860)
+    this.inspectButtonContainer = this.createTopBarButton(300, 34, 92, 34, '📋 Kỹ năng', () => {
+      if (this.titleScreen?.isOpen || this.settingsModal?.isOpen) return;
+      audio.playPickup();
+      this.toggleInspectModal();
+    });
+    this.inspectButtonContainer.setVisible(!this.titleScreen?.isOpen);
+  }
+
+  public toggleInspectModal(): void {
+    if (this.titleScreen?.isOpen || this.settingsModal?.isOpen) return;
+    if (this.inspectModal?.isOpen) {
+      this.closeInspectModal();
+    } else if (!this.isAnyModalOpen) {
+      this.openInspectModal();
+    }
+  }
+
+  public openInspectModal(): void {
+    if (this.inspectModal?.isOpen || this.titleScreen?.isOpen || this.settingsModal?.isOpen || this.isAnyModalOpen) {
+      return;
+    }
+    events.emit('player:inspect-request');
+    const snapshot = this.latestInspectSnapshot ?? this.buildFallbackInspectSnapshot();
+    events.emit('settings:modal-toggled', { isOpen: true });
+    this.inspectModal.show(snapshot, () => this.handleInspectClosed());
+  }
+
+  private closeInspectModal(): void {
+    if (!this.inspectModal?.isOpen) return;
+    this.inspectModal.hide();
+    this.handleInspectClosed();
+  }
+
+  private handleInspectClosed(): void {
+    events.emit('settings:modal-toggled', { isOpen: false });
+  }
+
+  private buildFallbackInspectSnapshot(): PlayerInspectSnapshot {
+    const heroCfg = HEROES[this.selectedHeroId] ?? HEROES.alchemist;
+    const skillMeta = getHeroSkillMeta(heroCfg.id, this.selectedSkillVariant);
+    const startWeapon = WEAPONS[heroCfg.startWeapon];
+    return {
+      heroId: heroCfg.id,
+      heroNameVi: heroCfg.nameVi,
+      skillVariant: this.selectedSkillVariant,
+      skillNameVi: skillMeta.nameVi,
+      skillCooldownSec: skillMeta.cooldown,
+      skillDescVi: skillMeta.descVi,
+      statueBlessing: null,
+      weapons: startWeapon
+        ? [{ nameVi: startWeapon.nameVi, forgeLevel: 0, coreNameVi: null, isActive: true }]
+        : [],
+      upgrades: []
+    };
+  }
+
+  public handleTabKey(): void {
+    this.toggleInspectModal();
   }
 
   public openSettingsModal(): void {
@@ -169,6 +267,10 @@ export class UIScene extends Phaser.Scene {
       this.settingsModal.handleEsc();
       return;
     }
+    if (this.inspectModal?.isOpen) {
+      this.closeInspectModal();
+      return;
+    }
     if (this.pauseModal?.isOpen) {
       this.pauseModal.hide();
       const resume = this.activePauseResume;
@@ -182,21 +284,29 @@ export class UIScene extends Phaser.Scene {
   }
 
   private showTitleScreen(): void {
+    this.latestInspectSnapshot = null;
+    if (this.inspectModal?.isOpen) {
+      this.inspectModal.hide();
+    }
+    this.inspectButtonContainer?.setVisible(false);
     this.titleScreen.show((heroId: HeroId, skillVariant: SkillVariant, difficultyMode: DifficultyMode) => {
       this.selectedHeroId = heroId;
       this.selectedSkillVariant = skillVariant;
       this.selectedDifficultyMode = difficultyMode;
+      this.latestInspectSnapshot = null;
+      this.inspectButtonContainer?.setVisible(true);
       events.emit('game:restart', { heroId, skillVariant, difficultyMode });
     });
   }
 
   public get isAnyModalOpen(): boolean {
-    return (
-      (this.titleScreen && this.titleScreen.isOpen) ||
-      (this.pauseModal && this.pauseModal.isOpen) ||
-      (this.upgradeModal && this.upgradeModal.isOpen) ||
-      (this.gameOverModal && this.gameOverModal.isOpen) ||
-      (this.settingsModal && this.settingsModal.isOpen)
+    return Boolean(
+      this.titleScreen?.isOpen ||
+        this.pauseModal?.isOpen ||
+        this.upgradeModal?.isOpen ||
+        this.gameOverModal?.isOpen ||
+        this.settingsModal?.isOpen ||
+        this.inspectModal?.isOpen
     );
   }
 }

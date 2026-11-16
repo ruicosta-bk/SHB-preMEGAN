@@ -5,8 +5,9 @@ import { EnemyBase } from '../enemies/EnemyBase';
 import { events } from '../core/EventBus';
 import { audio } from '../core/AudioSystem';
 import { StatusManager } from '../combat/StatusManager';
+import type { PlayerController } from '../player/PlayerController';
 
-export type PropType = 'explosive' | 'toxic' | 'crate';
+export type PropType = 'explosive' | 'toxic' | 'frost' | 'crate';
 
 export interface PropData {
   id: string;
@@ -20,6 +21,15 @@ export interface PropData {
   shadow: Phaser.GameObjects.Sprite;
 }
 
+const BARREL_EXPLOSION_SPEC: Record<
+  'explosive' | 'toxic' | 'frost',
+  { radius: number; damage: number; element: 'fire' | 'poison' | 'frost'; color: number }
+> = {
+  explosive: { radius: 85, damage: 24, element: 'fire', color: 0xf59e0b },
+  toxic: { radius: 75, damage: 14, element: 'poison', color: 0x22c55e },
+  frost: { radius: 75, damage: 12, element: 'frost', color: 0x38bdf8 }
+};
+
 export class InteractiveProps {
   private scene: Phaser.Scene;
   public props: PropData[] = [];
@@ -30,12 +40,13 @@ export class InteractiveProps {
 
   public spawnProp(type: PropType, x: number, y: number): PropData {
     const id = 'prop_' + Math.random().toString(36).slice(2, 9);
-    const texture =
-      type === 'explosive'
-        ? 'barrel_explosive'
-        : type === 'toxic'
-          ? 'barrel_toxic'
-          : 'crate_wood';
+    const textureMap: Record<PropType, string> = {
+      explosive: 'barrel_explosive',
+      toxic: 'barrel_toxic',
+      frost: 'barrel_frost',
+      crate: 'crate_wood'
+    };
+    const texture = textureMap[type];
 
     const shadow = this.scene.add.sprite(x, y + 10, 'shadow').setDepth(4);
     const sprite = this.scene.add.sprite(x, y, texture).setDepth(5);
@@ -130,14 +141,15 @@ export class InteractiveProps {
     audio.playExplosion();
     this.scene.cameras.main.shake(240, 0.015);
 
-    const explosionRadius = prop.type === 'explosive' ? 85 : 70;
-    const damage = prop.type === 'explosive' ? 24 : 14;
-    const element: 'fire' | 'frost' = prop.type === 'explosive' ? 'fire' : 'frost';
+    const spec = BARREL_EXPLOSION_SPEC[prop.type === 'crate' ? 'explosive' : prop.type];
+    const explosionRadius = spec.radius;
+    const damage = spec.damage;
+    const element = spec.element;
 
     pool.destroyEnemyBulletsInRadius(prop.x, prop.y, explosionRadius);
 
     const fx = this.scene.add.graphics().setDepth(20);
-    const fxColor = prop.type === 'explosive' ? 0xf59e0b : 0x22c55e;
+    const fxColor = spec.color;
     fx.fillStyle(fxColor, 0.85);
     fx.fillCircle(prop.x, prop.y, explosionRadius);
     fx.lineStyle(3, 0xffffff, 1);
@@ -154,7 +166,15 @@ export class InteractiveProps {
     });
 
     // Single explosion authority: MainScene's 'combat:explosion' listener resolves enemy damage, status, and barrel chains
-    events.emit('combat:explosion', { x: prop.x, y: prop.y, radius: explosionRadius, damage, element });
+    events.emit('combat:explosion', {
+      x: prop.x,
+      y: prop.y,
+      radius: explosionRadius,
+      damage,
+      element,
+      spawnHazardZone: true,
+      hurtsPlayer: true
+    });
 
     prop.sprite.destroy();
     prop.shadow.destroy();
@@ -175,14 +195,24 @@ export interface CombatExplosionPayload {
   radius: number;
   damage: number;
   element?: 'fire' | 'frost' | 'physical' | 'poison';
+  spawnHazardZone?: boolean;
+  hurtsPlayer?: boolean;
 }
+
+export type ExplosionPlayerTarget =
+  | PlayerController
+  | {
+      sprite?: { x: number; y: number };
+      [key: string]: any;
+    };
 
 export function resolveCombatExplosion(
   data: CombatExplosionPayload,
   activeEnemies: EnemyBase[],
   interactiveProps: InteractiveProps | null | undefined,
   projectilePool: ProjectilePool,
-  onCrateBreak?: (x: number, y: number) => void
+  onCrateBreak?: (x: number, y: number) => void,
+  player?: ExplosionPlayerTarget | null
 ): void {
   const element = data.element ?? 'fire';
 
@@ -207,6 +237,16 @@ export function resolveCombatExplosion(
         StatusManager.applyStatus(enemy as any, 'freeze', 3.0, 0, 1.0, 0.45);
       } else if (element === 'poison') {
         StatusManager.applyStatus(enemy as any, 'poison', 3.0, 2, 0.5);
+      }
+    }
+  }
+
+  if (data.hurtsPlayer && player?.sprite && !(player as any).isDead) {
+    const pDist = Math.hypot(player.sprite.x - data.x, player.sprite.y - data.y);
+    if (pDist <= data.radius * 0.78) {
+      (player as any).takeDamage?.({ amount: 2, element, isPlayerAttack: false });
+      if (element === 'fire' || element === 'poison' || element === 'frost') {
+        (player as any).applyHazardExposure?.(element);
       }
     }
   }

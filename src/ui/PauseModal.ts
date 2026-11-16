@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { audio } from '../core/AudioSystem';
+import { controlSettings } from '../core/ControlSettings';
+import { HEROES, HeroId, SkillVariant, getHeroSkillMeta } from '../data/heroes';
 import { events } from '../core/EventBus';
 
 export class PauseModal {
@@ -13,10 +15,24 @@ export class PauseModal {
     this.container = scene.add.container(0, 0).setDepth(210).setScrollFactor(0).setVisible(false);
   }
 
-  public show(onResume: () => void, onRestart: () => void): void {
+  public show(
+    onResume: () => void,
+    onRestart: () => void,
+    heroId: HeroId = 'alchemist',
+    skillVariant: SkillVariant = 1
+  ): void {
     this.isOpen = true;
     this.container.removeAll(true);
     this.container.setVisible(true);
+
+    const heroCfg = HEROES[heroId] ?? HEROES.alchemist;
+    const skillMeta = getHeroSkillMeta(heroCfg.id, skillVariant);
+    const moveKeys = `${controlSettings.getBindingLabel('moveUp')}${controlSettings.getBindingLabel('moveLeft')}${controlSettings.getBindingLabel('moveDown')}${controlSettings.getBindingLabel('moveRight')}`;
+    const fireKey = controlSettings.getBindingLabel('fire');
+    const dashKey = controlSettings.getBindingLabel('dash');
+    const skillKey = controlSettings.getBindingLabel('skill');
+    const swapKey = controlSettings.getBindingLabel('swapWeapon');
+    const interactKey = controlSettings.getBindingLabel('interact');
 
     const backdrop = this.scene.add.graphics();
     backdrop.fillStyle(0x000000, 0.8);
@@ -31,7 +47,7 @@ export class PauseModal {
     bg.strokeRoundedRect(-240, -220, 480, 440, 12);
     panel.add(bg);
 
-    const title = this.scene.add.text(0, -180, 'TẠM DỪNG', {
+    const title = this.scene.add.text(0, -188, 'TẠM DỪNG', {
       fontFamily: "'Segoe UI', Roboto, sans-serif",
       fontSize: '26px',
       color: '#f8fafc',
@@ -39,23 +55,32 @@ export class PauseModal {
     }).setOrigin(0.5);
     panel.add(title);
 
-    // Controls reminder
+    // Controls reminder (dynamically bound to active hero skill & user key bindings)
     const controls = [
-      'WASD / Mũi tên: Di chuyển mượt mà',
-      'Chuột trái: Tấn công (giữ để bắn liên tục)',
-      'Phím Space: Lướt né đòn (bất tử 0.2s)',
-      'Phím F / Chuột phải: Ném Bình Hỏa Giả Kim',
-      'Phím Q: Đổi súng  |  Phím E: Nhặt & Mua hàng Shop',
-      'Phím Esc: Bật / tắt menu tạm dừng'
+      `${moveKeys} / Mũi tên: Di chuyển mượt mà`,
+      `Phím ${fireKey} / Chuột trái: Tấn công (giữ để bắn liên tục)`,
+      `Phím ${dashKey}: Lướt né đòn (bất tử 0.2s)`,
+      `Phím ${skillKey} / Chuột phải: [S${skillVariant}] ${skillMeta.nameVi} (${heroCfg.nameVi})`,
+      `Phím ${swapKey}: Đổi súng  |  Phím ${interactKey}: Nhặt & Mua hàng Shop`,
+      'Phím Esc: Tạm dừng  |  Phím Tab: Xem Kỹ năng & Trang bị'
     ];
     controls.forEach((text, i) => {
-      const line = this.scene.add.text(0, -140 + i * 23, text, {
+      const line = this.scene.add.text(0, -150 + i * 21, text, {
         fontFamily: "'Segoe UI', Roboto, sans-serif",
-        fontSize: '12.5px',
-        color: '#94a3b8'
+        fontSize: '12px',
+        color: i === 3 ? heroCfg.accentHex || '#38bdf8' : '#94a3b8'
       }).setOrigin(0.5);
       panel.add(line);
     });
+
+    const skillNote = this.scene.add.text(0, -10, `Kỹ năng (${skillMeta.cooldown}s): ${skillMeta.descVi}`, {
+      fontFamily: "'Segoe UI', Roboto, sans-serif",
+      fontSize: '11.5px',
+      color: '#cbd5e1',
+      align: 'center',
+      wordWrap: { width: 432 }
+    }).setOrigin(0.5);
+    panel.add(skillNote);
 
     // Sound settings
     const soundTitle = this.scene.add.text(0, 30, 'CÀI ĐẶT ÂM THANH', {

@@ -21,8 +21,8 @@ describe('Milestone 9 Wave 1 Data & Poison Systems', () => {
     expect(solar.nameVi).toBe('Huyết Quang Đại Pháo');
     expect(solar.category).toBe('beam');
     expect(solar.tier).toBe(2);
-    expect(solar.damage).toBe(6);
-    expect(solar.energyCost).toBe(3);
+    expect(solar.damage).toBe(7);
+    expect(solar.energyCost).toBe(2);
     expect(solar.fireRate).toBe(7.2);
     expect(solar.range).toBe(580);
     expect(solar.pierceCount).toBe(999);

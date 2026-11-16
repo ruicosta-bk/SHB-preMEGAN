@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { generateNewBiomeEnemyTextures } from './textures/EnemyBossTextures';
+import { generateWeaponAndBarrelTextures } from './textures/WeaponSlashTextures';
 
 export class TextureGenerator {
   public static generateAll(scene: Phaser.Scene): void {
@@ -18,6 +19,11 @@ export class TextureGenerator {
     this.createPickupsAndProps(tm);
     this.createTurretFrames(tm);
     this.createIcons(tm);
+    generateWeaponAndBarrelTextures(
+      tm,
+      this.createCanvas.bind(this),
+      this.refresh.bind(this)
+    );
   }
 
   private static createCanvas(tm: Phaser.Textures.TextureManager, key: string, w: number, h: number): CanvasRenderingContext2D {
@@ -1823,20 +1829,6 @@ export class TextureGenerator {
     ctx.fillRect(7, 7, 3, 3);
     ctx.fillRect(5, 5, 2, 2);
     this.refresh(tm, 'bullet_glacial_orb');
-
-    // Slash Arc
-    ctx = this.createCanvas(tm, 'slash_arc', 68, 68);
-    ctx.strokeStyle = '#e0f2fe';
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.arc(34, 34, 28, -Math.PI * 0.35, Math.PI * 0.35);
-    ctx.stroke();
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(34, 34, 30, -Math.PI * 0.38, Math.PI * 0.38);
-    ctx.stroke();
-    this.refresh(tm, 'slash_arc');
 
     // Muzzle flash (16x16)
     ctx = this.createCanvas(tm, 'muzzle_flash', 16, 16);

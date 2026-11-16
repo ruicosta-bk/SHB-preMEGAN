@@ -32,8 +32,8 @@ export class SeededRandom {
 
 export class DungeonGenerator {
   public static readonly TILE_SIZE = 32;
-  public static readonly CELL_PITCH_TILES = 23; // Compact Soul Knight scale with exact odd tile pitch
-  public static readonly CELL_PITCH_PX = 23 * 32; // 736 px
+  public static readonly CELL_PITCH_TILES = 19; // Compact Soul Knight scale with exact odd tile pitch
+  public static readonly CELL_PITCH_PX = 19 * 32; // 608 px
 
   /**
    * Generates 8 connected rooms deterministically from a numeric seed & floor index (1..6)
@@ -334,17 +334,17 @@ export class DungeonGenerator {
   ): RoomLayout {
     if (type === 'start') {
       return {
-        width: 13,
-        height: 11,
+        width: 11,
+        height: 9,
         walls: [],
         traps: [],
         crates: [
           { x: 2, y: 2 },
-          { x: 10, y: 2 },
-          { x: 2, y: 8 },
-          { x: 10, y: 8 }
+          { x: 8, y: 2 },
+          { x: 2, y: 6 },
+          { x: 8, y: 6 }
         ],
-        torches: [{ x: 3, y: 0 }, { x: 9, y: 0 }],
+        torches: [{ x: 3, y: 0 }, { x: 7, y: 0 }],
         floorPattern: 'mosaic',
         doors: []
       };
@@ -352,12 +352,12 @@ export class DungeonGenerator {
 
     if (type === 'treasure') {
       return {
-        width: 13,
-        height: 11,
+        width: 11,
+        height: 9,
         walls: [],
         traps: [],
-        crates: [{ x: 2, y: 2 }, { x: 10, y: 2 }, { x: 2, y: 8 }, { x: 10, y: 8 }],
-        torches: [{ x: 3, y: 0 }, { x: 9, y: 0 }],
+        crates: [{ x: 2, y: 2 }, { x: 8, y: 2 }, { x: 2, y: 6 }, { x: 8, y: 6 }],
+        torches: [{ x: 3, y: 0 }, { x: 7, y: 0 }],
         floorPattern: 'rune',
         doors: []
       };
@@ -365,12 +365,12 @@ export class DungeonGenerator {
 
     if (type === 'rest') {
       return {
-        width: 15,
-        height: 13,
+        width: 13,
+        height: 11,
         walls: [],
         traps: [],
-        crates: [{ x: 2, y: 10 }, { x: 12, y: 10 }],
-        torches: [{ x: 4, y: 0 }, { x: 10, y: 0 }],
+        crates: [{ x: 2, y: 8 }, { x: 10, y: 8 }],
+        torches: [{ x: 3, y: 0 }, { x: 9, y: 0 }],
         floorPattern: 'rune',
         doors: []
       };
@@ -378,15 +378,15 @@ export class DungeonGenerator {
 
     if (type === 'boss') {
       return {
-        width: 19,
-        height: 15,
+        width: 15,
+        height: 13,
         walls: [
-          { x: 4, y: 3 }, { x: 14, y: 3 },
-          { x: 4, y: 11 }, { x: 14, y: 11 }
+          { x: 3, y: 3 }, { x: 11, y: 3 },
+          { x: 3, y: 9 }, { x: 11, y: 9 }
         ],
         traps: [],
         crates: [],
-        torches: [{ x: 4, y: 0 }, { x: 14, y: 0 }],
+        torches: [{ x: 4, y: 0 }, { x: 10, y: 0 }],
         floorPattern: 'carpet',
         doors: []
       };
@@ -394,10 +394,10 @@ export class DungeonGenerator {
 
     // Combat rooms: Soul Knight tight arena proportions (all odd dimensions for exact door centering)
     const sizeChoices = [
-      { w: 15, h: 13 },
-      { w: 17, h: 13 },
-      { w: 15, h: 15 },
-      { w: 17, h: 15 }
+      { w: 13, h: 11 },
+      { w: 15, h: 11 },
+      { w: 13, h: 13 },
+      { w: 15, h: 13 }
     ];
     const dims = sizeChoices[(idx + rng.rangeInt(0, 3)) % sizeChoices.length];
     const patternRoll = rng.rangeInt(0, 3);
@@ -410,50 +410,62 @@ export class DungeonGenerator {
     const my = Math.floor(dims.h / 2);
 
     if (patternRoll === 0) {
-      // 4 symmetrical pillar cover blocks + center spike traps
-      for (const px of [3, dims.w - 4]) {
-        for (const py of [3, dims.h - 4]) {
+      // 4 symmetrical inner cover pillars + quadrant spike traps + corner crates
+      for (const px of [mx - 2, mx + 2]) {
+        for (const py of [my - 2, my + 2]) {
           walls.push({ x: px, y: py });
         }
       }
-      traps.push({ x: mx - 2, y: my }, { x: mx + 2, y: my });
-      crates.push({ x: 2, y: 2 }, { x: dims.w - 3, y: dims.h - 3 });
+      traps.push({ x: mx - 3, y: my - 2 }, { x: mx + 3, y: my + 2 });
+      crates.push({ x: 2, y: dims.h - 3 }, { x: dims.w - 4, y: 2 });
     } else if (patternRoll === 1) {
-      // Twin flanking bunker pillars + corner crates
+      // Staggered bunker pillars + flanking spike traps + corner crates
       walls.push(
-        { x: mx - 3, y: my - 2 }, { x: mx - 3, y: my + 2 },
-        { x: mx + 3, y: my - 2 }, { x: mx + 3, y: my + 2 }
+        { x: 3, y: my - 2 }, { x: dims.w - 4, y: my - 2 },
+        { x: mx - 2, y: my + 2 }, { x: mx + 2, y: my + 2 }
       );
-      traps.push({ x: mx, y: my - 3 }, { x: mx, y: my + 3 });
-      crates.push({ x: 2, y: 2 }, { x: dims.w - 3, y: 2 }, { x: 2, y: dims.h - 3 });
+      traps.push({ x: mx - 2, y: my - 2 }, { x: mx + 2, y: my - 2 });
+      crates.push({ x: 3, y: 2 }, { x: 2, y: dims.h - 3 }, { x: dims.w - 4, y: dims.h - 3 });
     } else if (patternRoll === 2) {
-      // Diamond barricade pillars away from 3-tile doorway lanes
+      // Diagonal barricade pillars away from 3-tile doorway lanes
       walls.push(
-        { x: mx - 3, y: my - 2 }, { x: mx + 3, y: my + 2 },
-        { x: mx - 2, y: my + 3 }, { x: mx + 2, y: my - 3 }
+        { x: mx - 2, y: my - 2 }, { x: mx + 2, y: my + 2 },
+        { x: 3, y: my + 2 }, { x: dims.w - 4, y: my - 2 }
       );
-      traps.push({ x: 3, y: 3 }, { x: dims.w - 4, y: dims.h - 4 });
-      crates.push({ x: mx - 4, y: 2 }, { x: mx + 4, y: dims.h - 3 });
+      traps.push({ x: 3, y: my - 2 }, { x: dims.w - 4, y: my + 2 });
+      crates.push({ x: 2, y: dims.h - 3 }, { x: dims.w - 4, y: 2 });
     } else {
-      // Open tactical arena with crates & corner cover pillars
+      // Open tactical arena with outer wall pillars & inner cover crates
       walls.push(
-        { x: 4, y: 3 }, { x: dims.w - 5, y: 3 },
-        { x: 4, y: dims.h - 4 }, { x: dims.w - 5, y: dims.h - 4 }
+        { x: mx - 3, y: 2 }, { x: mx + 3, y: 2 },
+        { x: mx - 3, y: dims.h - 3 }, { x: mx + 3, y: dims.h - 3 }
       );
       crates.push(
-        { x: mx - 2, y: my - 1 }, { x: mx + 2, y: my + 1 },
-        { x: 2, y: my }, { x: dims.w - 3, y: my }
+        { x: mx - 2, y: my - 2 }, { x: mx + 2, y: my + 2 },
+        { x: mx - 2, y: my + 2 }, { x: mx + 2, y: my - 2 }
       );
     }
 
-    // Add Biome 2 icy patches or Biome 3 molten lava pools cleanly away from doorways/walls
-    const wallSet = new Set(walls.map(w => `${w.x},${w.y}`));
+    // Add Biome 2 icy patches or Biome 3 molten lava pools cleanly away from doorways/walls/props
+    const blockedHazardSet = new Set([
+      ...walls.map(w => `${w.x},${w.y}`),
+      ...traps.map(t => `${t.x},${t.y}`),
+      ...crates.map(c => `${c.x},${c.y}`)
+    ]);
     const addHazardPatch = (cx: number, cy: number, kind: 'ice' | 'lava') => {
       for (let ox = 0; ox <= 1; ox++) {
         for (let oy = 0; oy <= 1; oy++) {
           const hx = cx + ox;
           const hy = cy + oy;
-          if (!wallSet.has(`${hx},${hy}`)) {
+          if (
+            hx >= 2 &&
+            hx <= dims.w - 3 &&
+            hy >= 2 &&
+            hy <= dims.h - 3 &&
+            Math.abs(hx - mx) >= 2 &&
+            Math.abs(hy - my) >= 2 &&
+            !blockedHazardSet.has(`${hx},${hy}`)
+          ) {
             hazards.push({ x: hx, y: hy, kind });
           }
         }
@@ -461,11 +473,11 @@ export class DungeonGenerator {
     };
 
     if (biomeId === 'frost_cavern') {
-      addHazardPatch(mx - 2, my - 1, 'ice');
-      addHazardPatch(mx + 1, my, 'ice');
+      addHazardPatch(mx + 2, 2, 'ice');
+      addHazardPatch(3, dims.h - 4, 'ice');
     } else if (biomeId === 'molten_core') {
-      addHazardPatch(3, 3, 'lava');
-      addHazardPatch(dims.w - 5, dims.h - 5, 'lava');
+      addHazardPatch(mx + 2, 2, 'lava');
+      addHazardPatch(3, dims.h - 4, 'lava');
     }
 
     return {
