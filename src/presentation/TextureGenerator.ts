@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { generateNewBiomeEnemyTextures } from './textures/EnemyBossTextures';
 
 export class TextureGenerator {
   public static generateAll(scene: Phaser.Scene): void {
@@ -1166,6 +1167,12 @@ export class TextureGenerator {
     px(ctx, '#9333ea', 11, 24, 4, 2);
     px(ctx, '#f43f5e', 12, 24, 2, 1);
     this.refresh(tm, 'enemy_turret');
+
+    generateNewBiomeEnemyTextures(
+      tm,
+      this.createCanvas.bind(this),
+      this.refresh.bind(this)
+    );
   }
 
   private static createBossFrames(tm: Phaser.Textures.TextureManager): void {

@@ -9,6 +9,14 @@ import { EnemyCharger } from '../enemies/EnemyCharger';
 import { EnemyBomber } from '../enemies/EnemyBomber';
 import { EnemySummoner } from '../enemies/EnemySummoner';
 import { EnemyTurret } from '../enemies/EnemyTurret';
+import {
+  EnemyCryptShielder,
+  EnemyBoneSniper,
+  EnemyIceStalker,
+  EnemyGlacialTotem,
+  EnemyMagmaSlime,
+  EnemyPyroJuggernaut
+} from '../enemies/BiomeEnemies';
 import { BossIgnis } from '../enemies/BossIgnis';
 import { BossFrost } from '../enemies/BossFrost';
 import { BossMolten } from '../enemies/BossMolten';
@@ -488,6 +496,20 @@ export class RoomManager {
         enemy = new EnemySummoner(this.scene, worldPosX, worldPosY);
       } else if (sp.type === 'turret_mage') {
         enemy = new EnemyTurret(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'crypt_shielder') {
+        enemy = new EnemyCryptShielder(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'bone_sniper') {
+        enemy = new EnemyBoneSniper(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'ice_stalker') {
+        enemy = new EnemyIceStalker(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'glacial_totem') {
+        enemy = new EnemyGlacialTotem(this.scene, worldPosX, worldPosY);
+      } else if (sp.type === 'magma_slime') {
+        enemy = new EnemyMagmaSlime(this.scene, worldPosX, worldPosY, false);
+      } else if (sp.type === 'magma_slime_mini') {
+        enemy = new EnemyMagmaSlime(this.scene, worldPosX, worldPosY, true);
+      } else if (sp.type === 'pyro_juggernaut') {
+        enemy = new EnemyPyroJuggernaut(this.scene, worldPosX, worldPosY);
       } else if (
         sp.type === 'boss_frost' ||
         (sp.type === 'boss_ignis' && this.floorMeta.biomeId === 'frost_cavern' && this.floorMeta.isBossFloor)
@@ -643,6 +665,17 @@ export class RoomManager {
           }
         }
         this.rollEnemyDrop(enemy.sprite.x, enemy.sprite.y, enemy.isElite, energyCapacitorStacks);
+        if (enemy instanceof EnemyMagmaSlime && this.activeEnemies.length < 12) {
+          const splitSpawns = enemy.consumeSummonRequest();
+          if (splitSpawns && splitSpawns.length > 0) {
+            const normSpawns = splitSpawns.map(s => ({
+              type: s.type,
+              x: (s.x - curRoom.worldX) / curRoom.width,
+              y: (s.y - curRoom.worldY) / curRoom.height
+            }));
+            this.spawnEnemyList(curRoom, normSpawns);
+          }
+        }
         this.activeEnemies.splice(i, 1);
         continue;
       }

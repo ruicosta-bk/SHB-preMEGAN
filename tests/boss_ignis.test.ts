@@ -67,7 +67,7 @@ describe('QA-003 BossIgnis combat:enemy-hit feedback', () => {
 
     const boss = new BossIgnis(createMockBossScene(), 320, 240, 1);
     expect(boss.phase).toBe(1);
-    expect(boss.hp).toBe(165);
+    expect(boss.hp).toBe(240);
 
     // 1. Phase 1 hit
     const res1 = boss.takeDamage({ amount: 25, isCrit: false, element: 'fire', isPlayerAttack: true });
@@ -78,12 +78,12 @@ describe('QA-003 BossIgnis combat:enemy-hit feedback', () => {
     expect(damageDealt).toBe(25);
 
     // 2. Hit triggering Phase 1 -> Phase 2 transition
-    const res2 = boss.takeDamage({ amount: 150, isCrit: true, isPlayerAttack: true });
+    const res2 = boss.takeDamage({ amount: 225, isCrit: true, isPlayerAttack: true });
     expect(res2.isDead).toBe(false);
     expect(boss.phase).toBe(2);
     expect(hitEvents.length).toBe(2);
-    expect(hitEvents[1]).toMatchObject({ enemyId: boss.id, damage: 150, isCrit: true });
-    expect(damageDealt).toBe(175);
+    expect(hitEvents[1]).toMatchObject({ enemyId: boss.id, damage: 225, isCrit: true });
+    expect(damageDealt).toBe(250);
 
     // 3. Phase 2 lethal hit
     const p2Hp = boss.hp;
@@ -91,7 +91,7 @@ describe('QA-003 BossIgnis combat:enemy-hit feedback', () => {
     expect(res3.isDead).toBe(true);
     expect(boss.isDead).toBe(true);
     expect(hitEvents.length).toBe(3);
-    expect(damageDealt).toBe(175 + p2Hp + 10);
+    expect(damageDealt).toBe(250 + p2Hp + 10);
 
     // 4. Subsequent hit on dead boss emits nothing
     const res4 = boss.takeDamage({ amount: 20, isCrit: false, isPlayerAttack: true });

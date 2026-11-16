@@ -515,18 +515,24 @@ export class DungeonGenerator {
       if (isBossFloor) {
         return { wave1: [{ type: 'boss_ignis', x: 0.65, y: 0.5 }], waves: [] };
       }
-      // Sub-floor 1 Exit Guardian Chamber: Elite Captain + escorts at verified clear tiles
-      const guardian = biomeId === 'frost_cavern' ? 'frost_knight' : biomeId === 'molten_core' ? 'charger' : 'fan_caster';
-      const wave2Support = biomeId === 'molten_core' ? 'summoner' : 'turret_mage';
+      // Sub-floor 1 Exit Guardian Chamber: biome-themed Elite Captain + escorts at verified clear tiles
+      const guardian =
+        biomeId === 'frost_cavern' ? 'frost_knight' : biomeId === 'molten_core' ? 'pyro_juggernaut' : 'crypt_shielder';
+      const wave2Support =
+        biomeId === 'frost_cavern' ? 'glacial_totem' : biomeId === 'molten_core' ? 'summoner' : 'bone_sniper';
+      const escortA =
+        biomeId === 'frost_cavern' ? 'frost_mage' : biomeId === 'molten_core' ? 'magma_slime' : 'fan_caster';
+      const escortB =
+        biomeId === 'frost_cavern' ? 'ice_stalker' : biomeId === 'molten_core' ? 'charger' : 'shooter';
       const wave2: EnemySpawnDef[] = [
         { type: guardian, x: 0.5, y: 0.5, isElite: true },
-        { type: 'frost_mage', x: 0.32, y: 0.34 },
-        { type: 'charger', x: 0.72, y: 0.66 },
+        { type: escortA, x: 0.32, y: 0.34 },
+        { type: escortB, x: 0.72, y: 0.66 },
         { type: wave2Support, x: 0.28, y: 0.66 }
       ];
       if (difficultyMode === 'badass') {
         wave2.push({
-          type: wave2Support === 'summoner' ? 'turret_mage' : 'summoner',
+          type: wave2Support === 'summoner' ? 'pyro_juggernaut' : 'turret_mage',
           x: 0.72,
           y: 0.34
         });
@@ -534,8 +540,8 @@ export class DungeonGenerator {
       return {
         wave1: [
           { type: guardian, x: 0.62, y: 0.36, isElite: true },
-          { type: 'shooter', x: 0.68, y: 0.65 },
-          { type: 'grunt', x: 0.48, y: 0.5 }
+          { type: escortB, x: 0.68, y: 0.65 },
+          { type: biomeId === 'molten_core' ? 'magma_slime' : biomeId === 'frost_cavern' ? 'frost_mage' : 'grunt', x: 0.48, y: 0.5 }
         ],
         waves: [wave2]
       };
@@ -561,13 +567,15 @@ export class DungeonGenerator {
     let pool: string[];
     if (biomeId === 'stone_crypt') {
       pool = ['grunt', 'shooter', 'bomber'];
-      if (roomIndex >= 2) pool.push('fan_caster', 'frost_mage', 'turret_mage');
-      if (roomIndex >= 4) pool.push('charger', 'summoner');
+      if (roomIndex >= 2) pool.push('fan_caster', 'crypt_shielder');
+      if (roomIndex >= 4) pool.push('bone_sniper');
     } else if (biomeId === 'frost_cavern') {
-      pool = ['grunt', 'frost_mage', 'frost_knight', 'bomber', 'turret_mage'];
-      if (roomIndex >= 4) pool.push('charger', 'summoner');
+      pool = ['frost_mage', 'frost_knight', 'turret_mage', 'charger'];
+      if (roomIndex >= 2) pool.push('ice_stalker');
+      if (roomIndex >= 4) pool.push('glacial_totem');
     } else {
-      pool = ['fan_caster', 'charger', 'bomber', 'summoner', 'turret_mage', 'frost_knight'];
+      pool = ['charger', 'bomber', 'fan_caster', 'magma_slime'];
+      if (roomIndex >= 2) pool.push('summoner', 'pyro_juggernaut');
     }
 
     const pickWave = (count: number, eliteChance: number): EnemySpawnDef[] => {

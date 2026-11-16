@@ -196,15 +196,15 @@ export class ProjectilePool {
       const px = p.sprite.x;
       const py = p.sprite.y;
 
-      let hitWall = false;
+      let hitRect: { x: number; y: number; width: number; height: number } | null = null;
       for (const w of wallColliders) {
         if (px >= w.x && px <= w.x + w.width && py >= w.y && py <= w.y + w.height) {
-          hitWall = true;
+          hitRect = w;
           break;
         }
       }
 
-      if (hitWall) {
+      if (hitRect) {
         if (p.isBoomerang && !p.boomerangReturned) {
           p.boomerangReturned = true;
           p.vx = -p.vx;
@@ -212,19 +212,25 @@ export class ProjectilePool {
           p.hitEntities.clear();
           p.sprite.x += p.vx * deltaSec * 2;
           p.sprite.y += p.vy * deltaSec * 2;
-        } else if (p.isPlayer && p.bouncesRemaining > 0) {
+        } else if (p.bouncesRemaining > 0) {
           p.bouncesRemaining--;
-          p.damage *= 0.8;
-          // Reverse direction with small random perturbation
-          const currentAngle = Math.atan2(p.vy, p.vx);
-          const newAngle = currentAngle + Math.PI + (Math.random() - 0.5) * 0.4;
-          const speed = Math.hypot(p.vx, p.vy);
-          p.vx = Math.cos(newAngle) * speed;
-          p.vy = Math.sin(newAngle) * speed;
+          if (p.isPlayer) {
+            p.damage *= 0.8;
+          }
+          const prevX = px - moveStepX;
+          const prevY = py - moveStepY;
+          const hitHorizontal = prevX < hitRect.x || prevX > hitRect.x + hitRect.width;
+          const hitVertical = prevY < hitRect.y || prevY > hitRect.y + hitRect.height;
+          if (hitHorizontal || !hitVertical) {
+            p.vx = -p.vx;
+          }
+          if (hitVertical || !hitHorizontal) {
+            p.vy = -p.vy;
+          }
+          const newAngle = Math.atan2(p.vy, p.vx);
           p.sprite.setRotation(newAngle);
-          // Step out of wall
-          p.sprite.x += p.vx * deltaSec * 2;
-          p.sprite.y += p.vy * deltaSec * 2;
+          p.sprite.x = prevX + p.vx * deltaSec;
+          p.sprite.y = prevY + p.vy * deltaSec;
         } else {
           this.deactivate(p);
         }
@@ -257,6 +263,8 @@ export class ProjectilePool {
     p.active = false;
     p.sprite.setVisible(false);
     p.hitEntities.clear();
+    p.pierceRemaining = 0;
+    p.bouncesRemaining = 0;
     p.ownerRef = undefined;
     p.isBoomerang = false;
     p.isFrostNova = false;

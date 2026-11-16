@@ -11,6 +11,8 @@ type MoltenAttackState =
   | 'lava_eruption_windup'
   | 'spiral_barrage'
   | 'meteor_ring'
+  | 'magma_fissure_wave'
+  | 'hellfire_laser_sweep'
   | 'vulnerable';
 
 const LAVA_SLAM_RADIUS = 58;
@@ -20,8 +22,8 @@ const METEOR_TELEGRAPH_SEC = 0.85;
 export class BossMolten extends EnemyBase {
   public phase: number = 1;
   private attackState: MoltenAttackState = 'idle';
-  private stateTimer: number = 1.3;
-  private currentAttackIndex: number = 0;
+  private stateTimer: number = 1.1;
+  private lastAttack: MoltenAttackState | null = null;
 
   // Flame fan burst state
   private fanBurstsLeft: number = 0;
@@ -32,10 +34,19 @@ export class BossMolten extends EnemyBase {
   private spiralTicksLeft: number = 0;
   private spiralTimer: number = 0;
 
+  // Magma Fissure Wave & Hellfire Laser Sweep state
+  private fissureElapsed: number = 0;
+  private fissureNodes: { x: number; y: number; triggerTime: number; erupted: boolean }[] = [];
+  private sweepCenterX: number = 0;
+  private sweepCenterY: number = 0;
+  private sweepTicksLeft: number = 0;
+  private sweepTickTimer: number = 0;
+  private sweepAngle: number = 0;
+
   // Lava eruption slam & Phase 2 meteor ring state
   private slamTargetX: number = 0;
   private slamTargetY: number = 0;
-  private slamWindupDuration: number = 0.78;
+  private slamWindupDuration: number = 0.72;
   private slamGraphic: Phaser.GameObjects.Graphics | null = null;
   private pendingSummons: { type: string; x: number; y: number }[] | null = null;
   private meteorElapsed: number = 0;
@@ -52,7 +63,7 @@ export class BossMolten extends EnemyBase {
   private stage: number;
   private bossNameVi: string;
   private readonly baseP1Hp: number;
-  private readonly baseP1Speed: number = 86;
+  private readonly baseP1Speed: number = 88;
   private hpScaleMult: number = 1;
   private speedScaleMult: number = 1;
 
@@ -63,8 +74,8 @@ export class BossMolten extends EnemyBase {
     stage: number = 3,
     bossNameVi: string = 'Ignifer Molten - Chúa Tể Dung Nham'
   ) {
-    const p1Hp = Math.max(1, 250 + (stage - 3) * 40);
-    super(scene, x, y, 'boss_molten_p1', p1Hp, 86);
+    const p1Hp = Math.max(1, 360 + Math.max(0, stage - 3) * 60);
+    super(scene, x, y, 'boss_molten_p1', p1Hp, 88);
     this.baseP1Hp = p1Hp;
     this.stage = stage;
     this.bossNameVi = bossNameVi || 'Ignifer Molten - Chúa Tể Dung Nham';
@@ -121,21 +132,21 @@ export class BossMolten extends EnemyBase {
     // Phase 1 -> Phase 2 transition
     if (this.phase === 1 && this.hp <= 0) {
       this.phase = 2;
-      const baseP2Hp = Math.max(1, 230 + (this.stage - 3) * 40);
+      const baseP2Hp = Math.max(1, 340 + Math.max(0, this.stage - 3) * 55);
       const p2Hp = Math.max(1, Math.ceil(baseP2Hp * this.hpScaleMult));
       this.hp = p2Hp;
       this.maxHp = p2Hp;
-      this.speed = 108 * this.speedScaleMult;
+      this.speed = 110 * this.speedScaleMult;
       this.sprite.setTexture('boss_molten_p2');
       this.sprite.setTint(0xfb923c);
       this.hitFlashTimer = 0.28;
-      this.sprite.setAlpha(1.0);
+      this.sprite.setAlpha?.(1.0);
       this.slamGraphic?.clear();
       this.attackState = 'vulnerable';
-      this.stateTimer = Math.max(0.45, 0.85 / this.attackRateScale);
+      this.stateTimer = Math.max(0.35, 0.55 / this.attackRateScale);
 
       this.pendingSummons = [
-        { type: 'bomber', x: this.sprite.x - 68, y: this.sprite.y - 20 },
+        { type: 'magma_slime', x: this.sprite.x - 68, y: this.sprite.y - 20 },
         { type: 'charger', x: this.sprite.x + 68, y: this.sprite.y + 20 }
       ];
 
@@ -189,18 +200,14 @@ export class BossMolten extends EnemyBase {
         }
 
         if (this.stateTimer <= 0) {
-          const rotation: MoltenAttackState[] =
-            this.phase === 1
-              ? ['flame_fan', 'lava_eruption_windup', 'spiral_barrage']
-              : ['flame_fan', 'lava_eruption_windup', 'spiral_barrage', 'meteor_ring'];
-          this.currentAttackIndex = (this.currentAttackIndex + 1) % rotation.length;
-          const nextAtk = rotation[this.currentAttackIndex];
+          const nextAtk = this.pickNextAttack(dist);
+          this.lastAttack = nextAtk;
 
           if (nextAtk === 'flame_fan') {
             this.attackState = 'flame_fan';
             this.fanBurstsLeft = this.phase === 1 ? 2 : 3;
             this.fanTimer = 0;
-            this.stateTimer = Math.max(0.55, (this.phase === 1 ? 0.7 : 0.9) / this.attackRateScale);
+            this.stateTimer = Math.max(0.55, (this.phase === 1 ? 0.68 : 0.85) / this.attackRateScale);
           } else if (nextAtk === 'lava_eruption_windup') {
             this.attackState = 'lava_eruption_windup';
             this.slamTargetX = roomBounds
@@ -209,14 +216,40 @@ export class BossMolten extends EnemyBase {
             this.slamTargetY = roomBounds
               ? Phaser.Math.Clamp(playerY, roomBounds.minY + 16, roomBounds.maxY - 16)
               : playerY;
-            this.slamWindupDuration = Math.max(0.42, (this.phase === 1 ? 0.78 : 0.62) / this.attackRateScale);
+            this.slamWindupDuration = Math.max(0.42, (this.phase === 1 ? 0.72 : 0.58) / this.attackRateScale);
             this.stateTimer = this.slamWindupDuration;
           } else if (nextAtk === 'spiral_barrage') {
             this.attackState = 'spiral_barrage';
             this.spiralAngle = Math.atan2(dy, dx);
             this.spiralTicksLeft = this.phase === 1 ? 16 : 24;
             this.spiralTimer = 0;
-            this.stateTimer = Math.max(0.85, (this.phase === 1 ? 1.4 : 1.65) / this.attackRateScale);
+            this.stateTimer = Math.max(0.85, (this.phase === 1 ? 1.35 : 1.6) / this.attackRateScale);
+          } else if (nextAtk === 'magma_fissure_wave') {
+            this.attackState = 'magma_fissure_wave';
+            this.fissureElapsed = 0;
+            this.fissureNodes = [];
+            const baseAng = Math.atan2(dy, dx);
+            const windupSec = Math.max(0.28, 0.42 / this.attackRateScale);
+            for (const branchOff of [-0.32, 0, 0.32]) {
+              const ang = baseAng + branchOff;
+              for (let step = 1; step <= 4; step++) {
+                const rawX = this.sprite.x + Math.cos(ang) * (step * 56);
+                const rawY = this.sprite.y + Math.sin(ang) * (step * 56);
+                this.fissureNodes.push({
+                  x: roomBounds ? Phaser.Math.Clamp(rawX, roomBounds.minX + 16, roomBounds.maxX - 16) : rawX,
+                  y: roomBounds ? Phaser.Math.Clamp(rawY, roomBounds.minY + 16, roomBounds.maxY - 16) : rawY,
+                  triggerTime: windupSec + (step - 1) * 0.16,
+                  erupted: false
+                });
+              }
+            }
+          } else if (nextAtk === 'hellfire_laser_sweep') {
+            this.attackState = 'hellfire_laser_sweep';
+            this.sweepCenterX = roomBounds ? (roomBounds.minX + roomBounds.maxX) / 2 : this.sprite.x;
+            this.sweepCenterY = roomBounds ? (roomBounds.minY + roomBounds.maxY) / 2 : this.sprite.y;
+            this.sweepAngle = Math.atan2(dy, dx);
+            this.sweepTicksLeft = 8;
+            this.sweepTickTimer = Math.max(0.22, 0.32 / this.attackRateScale);
           } else {
             this.attackState = 'meteor_ring';
             this.meteorElapsed = 0;
@@ -238,12 +271,12 @@ export class BossMolten extends EnemyBase {
         this.fanTimer -= deltaSec;
         if (this.fanTimer <= 0 && this.fanBurstsLeft > 0) {
           this.fanBurstsLeft--;
-          this.fanTimer = Math.max(0.18, (this.phase === 1 ? 0.34 : 0.26) / this.attackRateScale);
+          this.fanTimer = Math.max(0.18, (this.phase === 1 ? 0.32 : 0.25) / this.attackRateScale);
           this.fireFlameFan(playerX, playerY, pool);
         }
         if (this.fanBurstsLeft <= 0 && this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = Math.max(0.4, (this.phase === 1 ? 0.85 : 0.62) / this.attackRateScale);
+          this.stateTimer = Math.max(0.28, (this.phase === 1 ? 0.42 : 0.32) / this.attackRateScale);
         }
         break;
       }
@@ -264,7 +297,7 @@ export class BossMolten extends EnemyBase {
           this.slamGraphic?.clear();
           this.executeLavaEruption(pool, walls, roomBounds);
           this.attackState = 'vulnerable';
-          this.stateTimer = Math.max(0.42, (this.phase === 1 ? 0.9 : 0.65) / this.attackRateScale);
+          this.stateTimer = Math.max(0.42, (this.phase === 1 ? 0.72 : 0.56) / this.attackRateScale);
         }
         break;
       }
@@ -272,12 +305,12 @@ export class BossMolten extends EnemyBase {
       case 'spiral_barrage': {
         this.moveTowardsWithObstacleAvoidance(playerX, playerY, deltaSec, walls, this.speed * 0.5);
         this.spiralTimer += deltaSec;
-        const fireInterval = Math.max(0.038, (this.phase === 1 ? 0.08 : 0.058) / this.attackRateScale);
+        const fireInterval = Math.max(0.038, (this.phase === 1 ? 0.08 : 0.056) / this.attackRateScale);
         if (this.spiralTimer >= fireInterval && this.spiralTicksLeft > 0) {
           this.spiralTimer = 0;
           this.spiralTicksLeft--;
           this.spiralAngle += 0.32;
-          const bulletSpeed = this.phase === 1 ? 210 : 245;
+          const bulletSpeed = this.phase === 1 ? 215 : 250;
 
           audio.playEnemyShoot();
           for (let stream = 0; stream < 2; stream++) {
@@ -297,7 +330,97 @@ export class BossMolten extends EnemyBase {
         }
         if (this.spiralTicksLeft <= 0 && this.stateTimer <= 0) {
           this.attackState = 'vulnerable';
-          this.stateTimer = Math.max(0.4, (this.phase === 1 ? 0.85 : 0.62) / this.attackRateScale);
+          this.stateTimer = Math.max(0.28, (this.phase === 1 ? 0.42 : 0.32) / this.attackRateScale);
+        }
+        break;
+      }
+
+      case 'magma_fissure_wave': {
+        this.fissureElapsed += deltaSec;
+        this.slamGraphic?.clear();
+
+        let allErupted = true;
+        for (const node of this.fissureNodes) {
+          if (node.erupted) continue;
+          allErupted = false;
+          if (this.slamGraphic) {
+            this.slamGraphic.lineStyle(2, 0xf97316, 0.85);
+            this.slamGraphic.strokeCircle(node.x, node.y, 22);
+            this.slamGraphic.fillStyle(0xea580c, 0.22);
+            this.slamGraphic.fillCircle(node.x, node.y, 16);
+          }
+          if (this.fissureElapsed >= node.triggerTime) {
+            node.erupted = true;
+            audio.playExplosion();
+            for (let k = 0; k < 4; k++) {
+              const ang = (k / 4) * Math.PI * 2 + Math.PI / 4;
+              pool.spawn({
+                x: node.x + Math.cos(ang) * 6,
+                y: node.y + Math.sin(ang) * 6,
+                angleRad: ang,
+                speed: 190,
+                damage: 2 + this.bonusDamage,
+                isPlayer: false,
+                element: 'fire',
+                texture: 'bullet_magma_glob',
+                range: 240
+              });
+            }
+          }
+        }
+
+        if (allErupted) {
+          this.slamGraphic?.clear();
+          this.attackState = 'vulnerable';
+          this.stateTimer = Math.max(0.32, 0.44 / this.attackRateScale);
+        }
+        break;
+      }
+
+      case 'hellfire_laser_sweep': {
+        this.moveTowardsWithObstacleAvoidance(this.sweepCenterX, this.sweepCenterY, deltaSec, walls, this.speed * 1.15);
+        this.sweepTickTimer -= deltaSec;
+        if (this.slamGraphic) {
+          this.slamGraphic.clear();
+          this.slamGraphic.lineStyle(2, 0xef4444, 0.55);
+          for (let arm = 0; arm < 4; arm++) {
+            const ang = this.sweepAngle + (arm / 4) * Math.PI * 2;
+            this.slamGraphic.beginPath();
+            this.slamGraphic.moveTo(this.sprite.x, this.sprite.y);
+            this.slamGraphic.lineTo(
+              this.sprite.x + Math.cos(ang) * 180,
+              this.sprite.y + Math.sin(ang) * 180
+            );
+            this.slamGraphic.strokePath();
+          }
+        }
+
+        if (this.sweepTickTimer <= 0 && this.sweepTicksLeft > 0) {
+          this.sweepTicksLeft--;
+          this.sweepTickTimer = Math.max(0.09, 0.16 / this.attackRateScale);
+          this.sweepAngle += 0.26;
+          audio.playEnemyShoot();
+          for (let arm = 0; arm < 4; arm++) {
+            const ang = this.sweepAngle + (arm / 4) * Math.PI * 2;
+            pool.spawn({
+              x: this.sprite.x + Math.cos(ang) * 18,
+              y: this.sprite.y + Math.sin(ang) * 18,
+              angleRad: ang,
+              speed: 270,
+              damage: 2 + this.bonusDamage,
+              isPlayer: false,
+              element: 'fire',
+              texture: arm % 2 === 0 ? 'bullet_enemy_laser' : 'bullet_magma_glob',
+              tint: arm % 2 === 0 ? 0xf97316 : undefined,
+              range: 460
+            });
+          }
+        }
+
+        if (this.sweepTicksLeft <= 0) {
+          this.slamGraphic?.clear();
+          this.attackState = 'vulnerable';
+          this.stateTimer = Math.max(0.45, 0.72 / this.attackRateScale);
         }
         break;
       }
@@ -360,21 +483,39 @@ export class BossMolten extends EnemyBase {
         if (allErupted) {
           this.slamGraphic?.clear();
           this.attackState = 'vulnerable';
-          this.stateTimer = Math.max(0.42, 0.7 / this.attackRateScale);
+          this.stateTimer = Math.max(0.38, 0.55 / this.attackRateScale);
         }
         break;
       }
 
       case 'vulnerable':
         this.slamGraphic?.clear();
-        this.sprite.setAlpha(0.9);
+        this.sprite.setAlpha?.(0.9);
         if (this.stateTimer <= 0) {
-          this.sprite.setAlpha(1.0);
+          this.sprite.setAlpha?.(1.0);
           this.attackState = 'idle';
-          this.stateTimer = Math.max(0.25, (this.phase === 1 ? 0.5 : 0.34) / this.attackRateScale);
+          this.stateTimer = Math.max(0.18, (this.phase === 1 ? 0.32 : 0.22) / this.attackRateScale);
         }
         break;
     }
+  }
+
+  private pickNextAttack(dist: number): MoltenAttackState {
+    const candidates: MoltenAttackState[] =
+      dist < 115
+        ? ['lava_eruption_windup', 'flame_fan', 'magma_fissure_wave']
+        : dist > 220
+        ? ['magma_fissure_wave', 'spiral_barrage', 'lava_eruption_windup']
+        : ['flame_fan', 'lava_eruption_windup', 'spiral_barrage', 'magma_fissure_wave'];
+
+    if (this.phase === 2) {
+      if (!candidates.includes('meteor_ring')) candidates.push('meteor_ring');
+      if (!candidates.includes('hellfire_laser_sweep')) candidates.push('hellfire_laser_sweep');
+    }
+
+    const filtered = candidates.filter(a => a !== this.lastAttack);
+    const pool = filtered.length > 0 ? filtered : candidates;
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   private fireFlameFan(playerX: number, playerY: number, pool: ProjectilePool): void {

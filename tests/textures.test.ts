@@ -19,11 +19,16 @@ describe('TextureGenerator Coverage Guard', () => {
   it('generates every bullet, effect, sprite, and icon texture referenced in src/', () => {
     const root = path.resolve(__dirname, '..');
     const tgPath = path.join(root, 'src/presentation/TextureGenerator.ts');
-    const tgSource = fs.readFileSync(tgPath, 'utf8');
+    const texturesDir = path.join(root, 'src/presentation/textures');
+    const textureModulePaths = [tgPath];
+    if (fs.existsSync(texturesDir)) {
+      textureModulePaths.push(...collectSrcFiles(texturesDir));
+    }
+    const tgSource = textureModulePaths.map(p => fs.readFileSync(p, 'utf8')).join('\n');
 
     const generated = new Set<string>();
     const patterns = [
-      /this\.(?:createCanvas|refresh)\(tm,\s*['"`]([^'"`]+)['"`]/g,
+      /(?:this\.)?(?:createCanvas|refresh)\(tm,\s*['"`]([^'"`]+)['"`]/g,
       /draw(?:Torch|Portal|Pet|Boss|FrostBoss|MoltenBoss|Gun|SimpleIcon|Pickup|Barrel)\(\s*['"`]([^'"`]+)['"`]/g
     ];
     for (const re of patterns) {
@@ -36,8 +41,9 @@ describe('TextureGenerator Coverage Guard', () => {
       generated.add(m[1]);
     }
 
+    const excludedPaths = new Set(textureModulePaths.map(p => path.resolve(p)));
     const srcFiles = collectSrcFiles(path.join(root, 'src')).filter(
-      f => path.resolve(f) !== tgPath
+      f => !excludedPaths.has(path.resolve(f))
     );
 
     const missing: Array<{ file: string; key: string }> = [];
