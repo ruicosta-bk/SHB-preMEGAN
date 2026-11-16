@@ -1,6 +1,7 @@
 import { events } from './EventBus';
 
-export const CONTROL_STORAGE_KEY = 'ember_vault_controls_v1';
+export const CONTROL_STORAGE_KEY = 'ember_vault_controls_v2';
+const LEGACY_CONTROL_STORAGE_KEY = 'ember_vault_controls_v1';
 
 export type ControlAction =
   | 'moveUp'
@@ -43,14 +44,14 @@ export const CONTROL_ACTIONS: readonly ControlActionMeta[] = [
 
 export const AIM_MODES: readonly { id: AimMode; labelVi: string; descVi: string }[] = [
   {
-    id: 'touchpad_assist',
-    labelVi: 'Linh hoạt (Khuyên dùng Touchpad)',
-    descVi: 'Nhấn phím Bắn để tự khóa quái gần nhất; dùng Chuột trái khi muốn ngắm tự do.'
+    id: 'cursor_only',
+    labelVi: 'Định hướng Touchpad + Phím Bắn (Mặc định)',
+    descVi: 'Lướt ngón tay/chuột chọn hướng, bấm phím Bắn trên bàn phím (luôn bắn theo hướng trỏ).'
   },
   {
-    id: 'cursor_only',
-    labelVi: 'Định hướng Touchpad + Phím Bắn',
-    descVi: 'Lướt nhẹ ngón tay chỉnh tâm ngắm, bấm phím Bắn trên bàn phím (không cần đè touchpad).'
+    id: 'touchpad_assist',
+    labelVi: 'Tự khóa quái khi bấm phím Bắn',
+    descVi: 'Nhấn phím Bắn để tự khóa quái gần nhất; dùng Chuột trái khi muốn ngắm tự do.'
   },
   {
     id: 'auto_nearest',
@@ -72,7 +73,7 @@ export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
   dropWeapon: 'KeyG'
 };
 
-export const DEFAULT_AIM_MODE: AimMode = 'touchpad_assist';
+export const DEFAULT_AIM_MODE: AimMode = 'cursor_only';
 
 const SPECIAL_KEY_CODES: Record<string, number> = {
   Space: 32,
@@ -194,7 +195,9 @@ class ControlSettingsManager {
     if (!storage) return defaults;
 
     try {
-      const raw = storage.getItem(CONTROL_STORAGE_KEY);
+      const rawV2 = storage.getItem(CONTROL_STORAGE_KEY);
+      const rawV1 = rawV2 ? null : storage.getItem(LEGACY_CONTROL_STORAGE_KEY);
+      const raw = rawV2 ?? rawV1;
       if (!raw) return defaults;
       const parsed = JSON.parse(raw);
       const mergedBindings: ControlBindings = { ...DEFAULT_CONTROL_BINDINGS };
@@ -207,9 +210,10 @@ class ControlSettingsManager {
         }
       }
       const aimMode: AimMode =
-        parsed?.aimMode === 'touchpad_assist' ||
-        parsed?.aimMode === 'cursor_only' ||
-        parsed?.aimMode === 'auto_nearest'
+        rawV2 &&
+        (parsed?.aimMode === 'touchpad_assist' ||
+          parsed?.aimMode === 'cursor_only' ||
+          parsed?.aimMode === 'auto_nearest')
           ? parsed.aimMode
           : DEFAULT_AIM_MODE;
       return { bindings: mergedBindings, aimMode };

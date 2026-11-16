@@ -221,11 +221,12 @@ export class HazardZoneManager {
             amount: zone.damagePerTick,
             isCrit: false,
             element: 'fire',
-            isPlayerAttack: true
+            isPlayerAttack: true,
+            isDot: true
           });
         }
         if (!enemy.isDead) {
-          StatusManager.applyStatus(enemy as any, 'burn', 2.5, 2, 0.5);
+          StatusManager.applyStatus(enemy as any, 'burn', 1.2, 2, 0.5);
         }
       } else if (zone.element === 'poison') {
         if (zone.damagePerTick > 0) {
@@ -233,11 +234,12 @@ export class HazardZoneManager {
             amount: zone.damagePerTick,
             isCrit: false,
             element: 'poison',
-            isPlayerAttack: true
+            isPlayerAttack: true,
+            isDot: true
           });
         }
         if (!enemy.isDead) {
-          StatusManager.applyStatus(enemy as any, 'poison', 3.0, 2, 0.5);
+          StatusManager.applyStatus(enemy as any, 'poison', 1.2, 2, 0.5);
           if (zone.applyChill) {
             StatusManager.applyStatus(enemy as any, 'freeze', 2.0, 0, 1.0, 0.45);
           }

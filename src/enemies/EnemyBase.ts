@@ -116,11 +116,13 @@ export abstract class EnemyBase implements EntityWithStatus {
       audio.playGlassBreak();
     }
 
-    // Apply elemental status
-    if (damage.element === 'fire') {
-      StatusManager.applyStatus(this, 'burn', 3.0, 2, 0.5);
-    } else if (damage.element === 'frost') {
-      StatusManager.applyStatus(this, 'freeze', 2.5, 1, 0.5, 0.5);
+    // Apply elemental status only on direct hits (DoT ticks must not self-refresh forever)
+    if (!damage.isDot) {
+      if (damage.element === 'fire') {
+        StatusManager.applyStatus(this, 'burn', 3.0, 2, 0.5);
+      } else if (damage.element === 'frost') {
+        StatusManager.applyStatus(this, 'freeze', 2.5, 1, 0.5, 0.5);
+      }
     }
 
     if (this.eliteAffix && this.eliteAffix.damageTakenMult !== 1 && amt > 0) {

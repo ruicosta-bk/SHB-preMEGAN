@@ -58,14 +58,16 @@ export class StatusManager {
           entity.takeDamage({
             amount: effect.damagePerTick,
             isPlayerAttack: true,
-            element: 'fire'
+            element: 'fire',
+            isDot: true
           });
           totalDotDamage += effect.damagePerTick;
         } else if (type === 'poison') {
           entity.takeDamage({
             amount: effect.damagePerTick,
             isPlayerAttack: true,
-            element: 'poison'
+            element: 'poison',
+            isDot: true
           });
           totalDotDamage += effect.damagePerTick;
         }

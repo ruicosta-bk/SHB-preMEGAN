@@ -40,6 +40,7 @@ import {
 import { HazardZoneManager } from '../src/combat/HazardZoneManager';
 import { InteractiveProps, resolveCombatExplosion } from '../src/world/InteractiveProps';
 import { PlayerController } from '../src/player/PlayerController';
+import { EnemyBase } from '../src/enemies/EnemyBase';
 import { PauseModal } from '../src/ui/PauseModal';
 import { CharacterInspectModal, PlayerInspectSnapshot } from '../src/ui/CharacterInspectModal';
 import { DungeonGenerator } from '../src/world/DungeonGenerator';
@@ -1043,6 +1044,40 @@ describe('Milestone 10 Improvements Verification Suite', () => {
       resolveCombatExplosion(emittedPayloads[1], [], props, pool, undefined, farPlayer);
       expect(farPlayer.takeDamage).not.toHaveBeenCalled();
       expect(farPlayer.applyHazardExposure).not.toHaveBeenCalled();
+    });
+
+    it('expires fire burn DoT on real EnemyBase after duration instead of self-refreshing infinitely', () => {
+      class DummyEnemy extends EnemyBase {
+        public getEnemyType(): string {
+          return 'dummy';
+        }
+      }
+
+      const { scene } = createMockScene({ runTweensImmediately: true });
+      const pool: any = { destroyEnemyBulletsInRadius: vi.fn(), spawn: vi.fn() };
+      const enemy = new DummyEnemy(scene, 120, 120, 'enemy_goblin', 80, 60);
+
+      // Direct fire hit applies 3.0s burn
+      enemy.takeDamage({ amount: 5, element: 'fire', isPlayerAttack: true });
+      expect(enemy.hp).toBe(75);
+      expect(enemy.statusEffects.get('burn')?.duration).toBe(3.0);
+
+      // Simulate 7 x 0.5s (3.5s) ticks: burn DoT ticks down and expires cleanly (does NOT stay burning forever)
+      for (let i = 0; i < 7; i++) {
+        enemy.update(0.5, 0, 0, pool, []);
+      }
+      expect(enemy.isDead).toBe(false);
+      expect(enemy.statusEffects.has('burn')).toBe(false);
+      expect(enemy.sprite.tint).toBeUndefined();
+      const hpAfterExpire = enemy.hp;
+
+      // Further updates deal zero extra burn damage
+      for (let i = 0; i < 4; i++) {
+        enemy.update(0.5, 0, 0, pool, []);
+      }
+      expect(enemy.hp).toBe(hpAfterExpire);
+
+      enemy.destroy();
     });
   });
 

@@ -160,6 +160,7 @@ describe('ControlSettings, Key Rebinding & Touchpad Fire/Aim Modes', () => {
   it('provides sensible defaults, key label formatting, key swap on conflict, and aim mode cycling', () => {
     const initial = controlSettings.getSettings();
     expect(initial.bindings).toEqual(DEFAULT_CONTROL_BINDINGS);
+    expect(DEFAULT_AIM_MODE).toBe('cursor_only');
     expect(initial.aimMode).toBe(DEFAULT_AIM_MODE);
     expect(formatKeyCode('KeyW')).toBe('W');
     expect(formatKeyCode('Space')).toBe('SPACE');
@@ -184,9 +185,9 @@ describe('ControlSettings, Key Rebinding & Touchpad Fire/Aim Modes', () => {
     expect(controlSettings.setBinding('dash', 'Escape')).toEqual({ ok: false, swappedWith: null });
 
     // Cycle Touchpad aim modes
-    expect(controlSettings.cycleAimMode()).toBe('cursor_only');
-    expect(controlSettings.cycleAimMode()).toBe('auto_nearest');
     expect(controlSettings.cycleAimMode()).toBe('touchpad_assist');
+    expect(controlSettings.cycleAimMode()).toBe('auto_nearest');
+    expect(controlSettings.cycleAimMode()).toBe('cursor_only');
 
     controlSettings.resetToDefaults();
     expect(controlSettings.getSettings().bindings).toEqual(DEFAULT_CONTROL_BINDINGS);
@@ -245,7 +246,18 @@ describe('ControlSettings, Key Rebinding & Touchpad Fire/Aim Modes', () => {
       sprite: { x: 100, y: 260 }
     };
 
-    // 1. In cursor_only mode, holding keyboard fire key [J] shoots toward cursor (right: angle 0) without mouse down
+    // 0. By default (cursor_only), keyboard fire KeyJ shoots toward cursor (right: 300, 100), not locking enemy below
+    keyStates.get(74)!.isDown = true;
+    player.update(0.05, pointer, pool, [], [], [mockEnemy]);
+    const defaultBullets = pool.getActiveProjectiles(true);
+    expect(defaultBullets.length).toBeGreaterThan(0);
+    expect(defaultBullets[0].vx).toBeGreaterThan(100);
+    expect(Math.abs(defaultBullets[0].vy)).toBeLessThan(30);
+
+    // 1. Switching explicitly to cursor_only also shoots toward cursor without mouse down
+    pool.clearAll();
+    keyStates.get(74)!.isDown = false;
+    player.update(1.0, pointer, pool, [], [], [mockEnemy]);
     controlSettings.setAimMode('cursor_only');
     keyStates.get(74)!.isDown = true; // Default fire key KeyJ (74)
     player.update(0.05, pointer, pool, [], [], [mockEnemy]);

@@ -24,6 +24,7 @@ export interface DamageInfo {
   };
   sourceId?: string;
   isPlayerAttack: boolean;
+  isDot?: boolean;
 }
 
 export interface DamageResult {
